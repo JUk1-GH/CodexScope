@@ -115,6 +115,17 @@ function isVisibleInViewport(rect, height) {
             .map((el) => el.textContent.trim())
             .filter(Boolean).length,
         },
+        trendPaths: Array.from(document.querySelectorAll("#trendChart path[data-series]"))
+          .map((path) => {
+            const nums = (path.getAttribute("d")?.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+            const ys = [];
+            for (let index = 1; index < nums.length; index += 2) ys.push(nums[index]);
+            return {
+              series: path.getAttribute("data-series"),
+              minY: ys.length ? Math.min(...ys) : null,
+              maxY: ys.length ? Math.max(...ys) : null,
+            };
+          }),
       };
     });
 
@@ -215,6 +226,7 @@ function isVisibleInViewport(rect, height) {
     if (report.copyFlags.hasNonCodexSources) issues.push("non-Codex source copy remains");
     if (report.semanticControls.length) issues.push(`${report.semanticControls.length} non-button interactive-looking controls`);
     if (report.hiddenVisible.length) issues.push(`${report.hiddenVisible.length} hidden controls are still visible`);
+    if (report.trendPaths.some((path) => path.maxY !== null && path.maxY > 194.5)) issues.push("trend curve renders below zero axis");
     if (!report.distributionState.bars && !report.distributionState.empty) issues.push("distribution chart renders no state");
     if (report.distributionState.bars && report.distributionState.values < report.distributionState.bars) issues.push("distribution bars missing numeric values");
     if (!interactions.sessionsExpandable) issues.push("session expand control does not expand");

@@ -9,8 +9,10 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tidwall/gjson"
@@ -121,6 +123,17 @@ type LoadedData struct {
 	Limits        map[string]any
 	TTFBEvents    []RuntimeTTFBEvent
 	FailureEvents []RuntimeFailureEvent
+}
+
+type sessionFileCandidate struct {
+	path    string
+	mtimeNs int64
+	size    int64
+}
+
+type parsedSessionFile struct {
+	file   sessionFileCandidate
+	parsed ParsedFile
 }
 
 func parseTime(value string) (time.Time, bool) {
@@ -367,17 +380,32 @@ func writeCache(cachePath string, days int, files map[string]FileCache) {
 	if cachePath == "" {
 		return
 	}
-	_ = os.MkdirAll(filepath.Dir(cachePath), 0o755)
+	dir := filepath.Dir(cachePath)
+	if dir != "." && dir != "" {
+		_ = os.MkdirAll(dir, 0o755)
+	}
 	payload := CachePayload{Version: cacheVersion, WindowDays: days, Files: files}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return
 	}
-	tmp := cachePath + ".tmp"
-	if err := os.WriteFile(tmp, body, 0o644); err != nil {
+	tmp, err := os.CreateTemp(dir, filepath.Base(cachePath)+".*.tmp")
+	if err != nil {
 		return
 	}
-	_ = os.Rename(tmp, cachePath)
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.Write(body); err != nil {
+		_ = tmp.Close()
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		return
+	}
+	if err := os.Rename(tmpName, cachePath); err != nil {
+		_ = os.Remove(cachePath)
+		_ = os.Rename(tmpName, cachePath)
+	}
 }
 
 func parseSessionFile(path string, cutoff time.Time) ParsedFile {
@@ -569,12 +597,8 @@ func mergeSessionFile(parsed ParsedFile, cutoff time.Time, loaded *LoadedData, l
 	}
 }
 
-func loadSessions(root string, cutoff time.Time, cachePath string, days int) LoadedData {
-	loaded := LoadedData{}
-	cacheFiles := loadCache(cachePath, days)
-	nextCacheFiles := map[string]FileCache{}
-	var latestLimitsTs time.Time
-
+func collectSessionFiles(root string, cutoff time.Time) []sessionFileCandidate {
+	files := []sessionFileCandidate{}
 	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil || entry == nil || entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
 			return nil
@@ -586,18 +610,73 @@ func loadSessions(root string, cutoff time.Time, cachePath string, days int) Loa
 		if info.ModTime().UTC().Before(cutoff.Add(-24 * time.Hour)) {
 			return nil
 		}
-		cacheKey := path
-		cached, ok := cacheFiles[cacheKey]
-		var parsed ParsedFile
-		if ok && cached.MtimeNs == info.ModTime().UnixNano() && cached.Size == info.Size() {
-			parsed = cached.Parsed
-		} else {
-			parsed = parseSessionFile(path, cutoff)
-		}
-		nextCacheFiles[cacheKey] = FileCache{MtimeNs: info.ModTime().UnixNano(), Size: info.Size(), Parsed: parsed}
-		mergeSessionFile(parsed, cutoff, &loaded, &latestLimitsTs)
+		files = append(files, sessionFileCandidate{
+			path:    path,
+			mtimeNs: info.ModTime().UnixNano(),
+			size:    info.Size(),
+		})
 		return nil
 	})
+	sort.Slice(files, func(i, j int) bool { return files[i].path < files[j].path })
+	return files
+}
+
+func parseSessionFiles(files []sessionFileCandidate, cutoff time.Time, cacheFiles map[string]FileCache) []parsedSessionFile {
+	results := make([]parsedSessionFile, len(files))
+	if len(files) == 0 {
+		return results
+	}
+
+	workerCount := runtime.GOMAXPROCS(0) * 2
+	if workerCount < 2 {
+		workerCount = 2
+	}
+	if workerCount > 16 {
+		workerCount = 16
+	}
+	if workerCount > len(files) {
+		workerCount = len(files)
+	}
+
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	wg.Add(workerCount)
+	for worker := 0; worker < workerCount; worker++ {
+		go func() {
+			defer wg.Done()
+			for index := range jobs {
+				file := files[index]
+				cached, ok := cacheFiles[file.path]
+				var parsed ParsedFile
+				if ok && cached.MtimeNs == file.mtimeNs && cached.Size == file.size {
+					parsed = cached.Parsed
+				} else {
+					parsed = parseSessionFile(file.path, cutoff)
+				}
+				results[index] = parsedSessionFile{file: file, parsed: parsed}
+			}
+		}()
+	}
+	for index := range files {
+		jobs <- index
+	}
+	close(jobs)
+	wg.Wait()
+	return results
+}
+
+func loadSessions(root string, cutoff time.Time, cachePath string, days int) LoadedData {
+	loaded := LoadedData{}
+	cacheFiles := loadCache(cachePath, days)
+	nextCacheFiles := map[string]FileCache{}
+	var latestLimitsTs time.Time
+
+	files := collectSessionFiles(root, cutoff)
+	parsedFiles := parseSessionFiles(files, cutoff, cacheFiles)
+	for _, result := range parsedFiles {
+		nextCacheFiles[result.file.path] = FileCache{MtimeNs: result.file.mtimeNs, Size: result.file.size, Parsed: result.parsed}
+		mergeSessionFile(result.parsed, cutoff, &loaded, &latestLimitsTs)
+	}
 
 	writeCache(cachePath, days, nextCacheFiles)
 	return loaded

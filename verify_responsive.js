@@ -183,10 +183,8 @@ function isVisibleInViewport(rect, height) {
       const activeTrendLines = count('#trendChart path[data-series]');
       const logScaleActive = !logScaleButton || logScaleButton.classList.contains("active");
       const trendMultiSeries = totalActive && inputActive && reasoningActive && activeTrendLines >= 3 && inputSpread > 8 && reasoningSpread > 8 && logScaleActive;
-      const cumulativeButton = document.querySelector('.trend-mode[data-trend-mode="cumulative"]');
-      cumulativeButton?.click();
-      const chartMetaAfterCumulative = document.querySelector("#chartMeta")?.textContent?.trim() || "";
-      const cumulativeActivates = !cumulativeButton || (cumulativeButton.classList.contains("active") && chartMetaAfterCumulative.includes("累计"));
+      const trendModeControlsRemoved = document.querySelectorAll(".trend-mode").length === 0
+        && (document.querySelector("#chartMeta")?.textContent?.trim() || "").includes("累计");
       const customButton = document.querySelector('.period-btn[data-range="custom"]');
       customButton?.click();
       const customRange = document.querySelector("#customRange");
@@ -208,7 +206,7 @@ function isVisibleInViewport(rect, height) {
         distributionModeSwitches: !tokenModeButton || (tokenModeButton.classList.contains("active") && tokenModeSummary.includes("Token") && tokenModeBars > 0),
         defaultLinearScale,
         trendMultiSeries,
-        trendModeSwitches: cumulativeActivates,
+        trendModeControlsRemoved,
         customRangeReveals: !customButton || (customButton.classList.contains("active") && customRange && !customRange.hidden),
         customRangeComputes: !customButton || rangeAfterCustom.includes("至"),
       };
@@ -238,7 +236,7 @@ function isVisibleInViewport(rect, height) {
     if (!interactions.distributionModeSwitches) issues.push("distribution metric toggle does not switch to token mode");
     if (!interactions.defaultLinearScale) issues.push("trend scale does not default to linear");
     if (!interactions.trendMultiSeries) issues.push("trend chart does not show multiple visible curves together");
-    if (!interactions.trendModeSwitches) issues.push("trend mode toggle does not switch to cumulative");
+    if (!interactions.trendModeControlsRemoved) issues.push("trend chart should be cumulative-only");
     if (!interactions.customRangeReveals) issues.push("custom date range does not reveal inputs");
     if (!interactions.customRangeComputes) issues.push("custom date range does not compute a range label");
 

@@ -454,7 +454,6 @@
       background: #fff;
     }
 
-    .trend-mode,
     .trend-scale {
       appearance: none;
       flex: 0 0 55px;
@@ -468,12 +467,10 @@
       cursor: pointer;
     }
 
-    .trend-mode:first-child,
     .trend-scale:first-child {
       border-left: 0;
     }
 
-    .trend-mode.active,
     .trend-scale.active {
       background: var(--blue);
       color: #fff;
@@ -2676,16 +2673,12 @@
           <div class="panel-title">
             <div class="trend-heading">
               <h2>Token 消耗趋势 <span class="hint">i</span></h2>
-              <div id="chartMeta" class="forecast">峰值 --</div>
+              <div id="chartMeta" class="forecast">累计 --</div>
             </div>
             <div class="chart-actions">
               <div class="trend-toggle" role="group" aria-label="趋势尺度">
                 <button class="trend-scale active" type="button" data-trend-scale="linear">绝对</button>
                 <button class="trend-scale" type="button" data-trend-scale="log">对数</button>
-              </div>
-              <div class="trend-toggle" role="group" aria-label="趋势统计方式">
-                <button class="trend-mode active" type="button" data-trend-mode="bucket">分时</button>
-                <button class="trend-mode" type="button" data-trend-mode="cumulative">累计</button>
               </div>
             </div>
           </div>
@@ -2852,7 +2845,6 @@
         sessionsExpanded: false,
         modelsExpanded: false,
         distributionMode: "calls",
-        trendMode: "bucket",
         trendScale: "linear",
         trendSeries: {
           total: true,
@@ -3067,7 +3059,7 @@
         setText("failureCount", summary.failures ?? "0");
         setText("cacheHit", summary.cacheHitLabel || "--");
         setText("peakRate", (summary.peakTpmLabel || "--").replace(/\s*TPM$/, ""));
-        setText("chartMeta", `峰值 ${summary.peakLabel || "--"} @ ${summary.peakTime || "--"}`);
+        setText("chartMeta", `累计 ${summary.totalTokensLabel || "--"}`);
       };
       setText("syncText", `${data.generatedAt?.slice(11, 16) || "--"} 已同步`);
 
@@ -3159,7 +3151,6 @@
       };
 
       const trendRowsForMode = (rows) => {
-        if (uiState.trendMode !== "cumulative") return rows;
         const running = { total: 0, cached: 0, output: 0, input: 0, reasoning: 0 };
         return rows.map((row) => {
           Object.keys(running).forEach((key) => {
@@ -3170,9 +3161,6 @@
       };
 
       const renderTrendControls = () => {
-        document.querySelectorAll(".trend-mode").forEach((button) => {
-          button.classList.toggle("active", button.dataset.trendMode === uiState.trendMode);
-        });
         document.querySelectorAll(".trend-scale").forEach((button) => {
           button.classList.toggle("active", button.dataset.trendScale === uiState.trendScale);
         });
@@ -3221,9 +3209,7 @@
         };
         const series = (key) => rows.map((row, index) => [x(index), y(row[key] || 0)]);
         const primary = series(primaryKey);
-        const peakIndex = uiState.trendMode === "cumulative"
-          ? rows.length - 1
-          : rows.reduce((best, row, index) => (row[primaryKey] || 0) > (rows[best]?.[primaryKey] || 0) ? index : best, 0);
+        const peakIndex = rows.length - 1;
         const peakPoint = primary[peakIndex];
         const area = (points) => `${smoothPath(points)} L${points[points.length - 1][0]} ${bottom} L${points[0][0]} ${bottom} Z`;
         const yTicks = logScale
@@ -3238,9 +3224,7 @@
         ).join("");
         const gridLines = yTicks.filter((tick) => tick > 0).map((tick) => `<line x1="${left}" y1="${y(tick)}" x2="${right}" y2="${y(tick)}" class="grid-line"/>`).join("");
         const yLabels = compactChart ? "" : yTicks.map((tick) => `<text x="${tick === 0 ? 22 : 2}" y="${Math.min(198, y(tick) + 4)}" class="chart-label">${compact(tick)}</text>`).join("");
-        const metaLabel = uiState.trendMode === "cumulative"
-          ? `累计 ${primaryConfig.label} ${fmt(rows[peakIndex][primaryKey] || 0)}`
-          : `峰值 ${primaryConfig.label} ${fmt(rows[peakIndex][primaryKey] || 0)} @ ${rows[peakIndex].label}`;
+        const metaLabel = `累计 ${primaryConfig.label} ${fmt(rows[peakIndex][primaryKey] || 0)}`;
         setText("chartMeta", metaLabel);
         const tooltip = compactChart ? "" : `
           <rect x="${Math.min(right - 150, Math.max(left + 8, peakPoint[0] - 16))}" y="${Math.max(0, peakPoint[1] - 34)}" width="146" height="34" rx="5" class="tooltip-box"/>
@@ -3442,12 +3426,6 @@
       }
       document.querySelectorAll(".period-btn").forEach((button) => {
         button.addEventListener("click", () => applyRange(button.dataset.range || "today"));
-      });
-      document.querySelectorAll(".trend-mode").forEach((button) => {
-        button.addEventListener("click", () => {
-          uiState.trendMode = button.dataset.trendMode || "bucket";
-          renderChart();
-        });
       });
       document.querySelectorAll(".trend-scale").forEach((button) => {
         button.addEventListener("click", () => {

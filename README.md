@@ -6,8 +6,7 @@ The dashboard is a static HTML app. Your real usage export stays local in `data.
 
 ## Features
 
-- Token usage trend with absolute and logarithmic scales
-- Hourly/cumulative trend modes
+- Cumulative token usage trend with absolute and logarithmic scales
 - Date filters: last 24 hours, today, last 7 days, last 30 days, custom range
 - Request and token distribution charts
 - Real Codex quota status from local `rate_limits` events when available

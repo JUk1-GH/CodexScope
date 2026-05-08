@@ -35,7 +35,6 @@ To view your real local Codex usage, use the launcher for your system:
 - **Windows**: double-click `windows/open-dashboard.cmd`
 
 The launcher generates `data.js` from your local Codex logs and then opens `index.html`.
-If an old `data.js` already exists, the launcher opens the dashboard immediately, refreshes the data, and opens it again when the refresh finishes.
 
 You can also run the same steps manually on macOS or Linux:
 

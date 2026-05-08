@@ -6,10 +6,10 @@
   "type": "commonjs",
   "scripts": {
     "generate": "python3 generate_codex_data.py",
+    "generate:win": "py generate_codex_data.py",
     "verify": "node verify_responsive.js"
   },
   "devDependencies": {
     "playwright": "^1.56.0"
   }
 }
-

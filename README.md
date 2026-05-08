@@ -18,11 +18,29 @@ The dashboard is a static HTML app. Your real usage export stays local in `data.
 
 Open `index.html` directly in a browser to view the bundled sample data.
 
-To view your own local Codex usage:
+To view your own local Codex usage on macOS or Linux:
 
 ```bash
 python3 generate_codex_data.py
 open index.html
+```
+
+On Windows PowerShell:
+
+```powershell
+py .\generate_codex_data.py
+start .\index.html
+```
+
+By default, the generator reads Codex logs from:
+
+- macOS/Linux: `~/.codex/sessions`
+- Windows: `%USERPROFILE%\.codex\sessions`
+
+If your Codex sessions are stored elsewhere, pass the path explicitly:
+
+```powershell
+py .\generate_codex_data.py --root "$env:USERPROFILE\.codex\sessions"
 ```
 
 The generator writes `data.js` next to `index.html`. That file may contain private project names, session ids, timestamps, usage patterns, and quota status, so it is excluded by `.gitignore`.
@@ -53,4 +71,3 @@ Review `data.js` before sharing screenshots or artifacts generated from your own
 ## License
 
 MIT
-

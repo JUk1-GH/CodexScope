@@ -267,6 +267,24 @@ def bucket_events(events: list[dict[str, Any]], now: datetime, minutes: int) -> 
     ]
 
 
+def peak_rate(events: list[dict[str, Any]]) -> tuple[int, datetime | None]:
+    window = timedelta(minutes=1)
+    left = 0
+    total = 0
+    peak_total = 0
+    peak_ts: datetime | None = None
+    for right, event in enumerate(events):
+        current_ts = event["ts"]
+        total += int((event.get("usage") or {}).get("total_tokens") or 0)
+        while left <= right and current_ts - events[left]["ts"] >= window:
+            total -= int((events[left].get("usage") or {}).get("total_tokens") or 0)
+            left += 1
+        if total > peak_total:
+            peak_total = total
+            peak_ts = current_ts
+    return peak_total, peak_ts
+
+
 def build_payload(root: Path, days: int, trend_minutes: int) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=days)
@@ -321,8 +339,7 @@ def build_payload(root: Path, days: int, trend_minutes: int) -> dict[str, Any]:
         row["percent"] = round(row["tokens"] / max_model_tokens * 100)
 
     trend = bucket_events(events, now, trend_minutes)
-    trend_step_minutes = trend_minutes / max(1, len(trend) - 1)
-    peak = max(trend, key=lambda row: row["total"], default={"total": 0, "label": "--"})
+    peak_total, peak_ts = peak_rate(events)
 
     primary = (limits or {}).get("primary") or {}
     secondary = (limits or {}).get("secondary") or {}
@@ -398,10 +415,10 @@ def build_payload(root: Path, days: int, trend_minutes: int) -> dict[str, Any]:
             "successRateLabel": f"{success_rate:.1f}%",
             "cacheHit": cache_hit,
             "cacheHitLabel": f"{cache_hit:.1f}%",
-            "peakTokens": peak["total"],
-            "peakLabel": fmt_int(peak["total"]),
-            "peakTime": peak["label"],
-            "peakTpmLabel": f"{fmt_int(peak['total'] / max(1, trend_step_minutes))} TPM",
+            "peakTokens": peak_total,
+            "peakLabel": fmt_int(peak_total),
+            "peakTime": display_time(peak_ts),
+            "peakTpmLabel": f"{fmt_int(peak_total)} TPM",
         },
         "limits": {
             "planType": (limits or {}).get("plan_type") or "unknown",

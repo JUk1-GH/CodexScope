@@ -3524,6 +3524,7 @@
       };
 
       const DAY = 24 * 60 * 60 * 1000;
+      const RATE_WINDOW_MS = 60 * 1000;
       const recordTime = (row) => Number(row?.[0]) || 0;
       const sortByTime = (rows) => Array.isArray(rows)
         ? [...rows].sort((a, b) => recordTime(a) - recordTime(b))
@@ -3592,6 +3593,12 @@
         const date = new Date(ts);
         if (multiDay) return `${date.getMonth() + 1}/${date.getDate()}`;
         return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+      };
+      const formatPeakLabel = (ts, range) => {
+        if (!Number.isFinite(ts)) return "--";
+        const date = new Date(ts);
+        const time = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+        return range.end - range.start > DAY ? `${date.getMonth() + 1}/${date.getDate()} ${time}` : time;
       };
       const formatRangeLabel = (start, end, preset) => {
         if (preset === "24h") return "最近24小时";
@@ -3735,6 +3742,30 @@
         }
         return buckets.map((bucket) => ({ ...bucket, label: formatBucketLabel(bucket.start, multiDay), stepMinutes: step / 60000 }));
       };
+      const computePeakRate = (filtered, range) => {
+        let left = 0;
+        let sum = 0;
+        let peakTotal = 0;
+        let peakTs = NaN;
+        for (let right = 0; right < filtered.length; right += 1) {
+          const current = filtered[right];
+          const currentTs = recordTime(current);
+          sum += Number(current[7]) || 0;
+          while (left <= right && currentTs - recordTime(filtered[left]) >= RATE_WINDOW_MS) {
+            sum -= Number(filtered[left][7]) || 0;
+            left += 1;
+          }
+          if (sum > peakTotal) {
+            peakTotal = sum;
+            peakTs = currentTs;
+          }
+        }
+        return {
+          total: peakTotal,
+          label: formatPeakLabel(peakTs, range),
+          tpm: peakTotal / (RATE_WINDOW_MS / 60000),
+        };
+      };
       const computeStats = (range) => {
         const filtered = rowsInRange(records, range);
         const failures = rowsInRange(failureRecords, range);
@@ -3773,7 +3804,7 @@
           byModel.set(model, modelRow);
         }
         const buckets = buildBuckets(filtered, range);
-        const peak = buckets.reduce((best, row) => row.total > best.total ? row : best, { total: 0, label: "--", stepMinutes: 1 });
+        const peak = computePeakRate(filtered, range);
         const cacheHit = totals.input ? totals.cached / totals.input * 100 : 0;
         const failureRate = totals.requests ? failures.length / totals.requests * 100 : 0;
         const successRate = totals.requests ? Math.max(0, (totals.requests - failures.length) / totals.requests * 100) : 100;
@@ -3806,7 +3837,7 @@
             cacheHitLabel: `${cacheHit.toFixed(1)}%`,
             peakLabel: fmt(peak.total),
             peakTime: peak.label,
-            peakTpmLabel: `${fmt(peak.total / Math.max(1, peak.stepMinutes))} TPM`,
+            peakTpmLabel: `${fmt(peak.tpm)} TPM`,
           },
           cost: {
             total: costs.total,

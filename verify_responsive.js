@@ -139,10 +139,12 @@ function isVisibleInViewport(rect, height) {
       const modelButton = document.querySelector("#toggleModels");
       const count = (selector) => document.querySelectorAll(selector).length;
       const beforeSessions = count("#sessionList .session-row");
+      const sessionsToggleNotNeeded = !sessionButton || sessionButton.hidden;
       sessionButton?.click();
       const afterSessions = count("#sessionList .session-row");
       sessionButton?.click();
       const beforeModels = count("#modelList .model-row");
+      const modelsToggleNotNeeded = !modelButton || modelButton.hidden;
       modelButton?.click();
       const afterModels = count("#modelList .model-row");
       modelButton?.click();
@@ -208,8 +210,8 @@ function isVisibleInViewport(rect, height) {
       }
       const rangeAfterCustom = document.querySelector("#rangeSummary")?.textContent?.trim() || "";
       return {
-        sessionsExpandable: !sessionButton || sessionButton.hidden || afterSessions > beforeSessions,
-        modelsExpandable: !modelButton || modelButton.hidden || afterModels > beforeModels,
+        sessionsExpandable: sessionsToggleNotNeeded || afterSessions > beforeSessions,
+        modelsExpandable: modelsToggleNotNeeded || afterModels > beforeModels,
         tabActivates: !tab || tab.classList.contains("active"),
         dateDayActivates: dayActivated,
         dateSevenActivates: sevenActivated,

@@ -34,20 +34,20 @@ To view your real local Codex usage, use the launcher for your system:
 - **macOS**: double-click `macos/open-dashboard.command`
 - **Windows**: double-click `windows/open-dashboard.cmd`
 
-The launcher generates `data.js` from your local Codex logs and then opens `index.html`.
+The launcher generates `data.js` from your local Codex logs and then opens `index.html`. It uses the Go generator when Go is available, and falls back to Python 3 if needed.
 Subsequent runs reuse a local `.codexscope-cache.json` file and only rescan changed session logs, so repeated launches should be much faster.
 
 You can also run the same steps manually on macOS or Linux:
 
 ```bash
-python3 generate_codex_data.py
+go run generate_codex_data.go
 open index.html
 ```
 
 On Windows PowerShell:
 
 ```powershell
-py .\generate_codex_data.py
+go run .\generate_codex_data.go
 start .\index.html
 ```
 
@@ -59,7 +59,7 @@ By default, the generator reads Codex logs from:
 If your Codex sessions are stored elsewhere, pass the path explicitly:
 
 ```powershell
-py .\generate_codex_data.py --root "$env:USERPROFILE\.codex\sessions"
+go run .\generate_codex_data.go --root "$env:USERPROFILE\.codex\sessions"
 ```
 
 The generator writes `data.js` next to `index.html`. Once that file exists, the dashboard automatically uses your real local data instead of the bundled demo. `data.js` and `.codexscope-cache.json` may contain private project names, session ids, timestamps, usage patterns, and quota status, so both are excluded by `.gitignore`.

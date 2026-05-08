@@ -5,8 +5,10 @@
   "private": false,
   "type": "commonjs",
   "scripts": {
-    "generate": "python3 generate_codex_data.py",
-    "generate:win": "py generate_codex_data.py",
+    "generate": "go run generate_codex_data.go",
+    "generate:py": "python3 generate_codex_data.py",
+    "generate:py:win": "py generate_codex_data.py",
+    "build:generator": "go build -o codexscope-generator generate_codex_data.go",
     "verify": "node verify_responsive.js"
   },
   "devDependencies": {

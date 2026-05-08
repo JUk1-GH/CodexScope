@@ -3,6 +3,19 @@ setlocal
 
 cd /d "%~dp0.."
 
+where go >nul 2>nul
+if %errorlevel%==0 (
+  go build -o codexscope-generator.exe generate_codex_data.go
+  if errorlevel 1 goto generator_failed
+  "%cd%\codexscope-generator.exe"
+  goto open_dashboard
+)
+
+if exist "%cd%\codexscope-generator.exe" (
+  "%cd%\codexscope-generator.exe"
+  goto open_dashboard
+)
+
 where py >nul 2>nul
 if %errorlevel%==0 (
   py -3 generate_codex_data.py
@@ -15,15 +28,16 @@ if %errorlevel%==0 (
   goto open_dashboard
 )
 
-echo Python 3 was not found. Please install Python 3 first.
+echo Go or Python 3 was not found. Please install Go or Python 3 first.
 pause
 exit /b 1
 
 :open_dashboard
-if errorlevel 1 (
-  echo Failed to generate data.js.
-  pause
-  exit /b 1
-)
-
+if errorlevel 1 goto generator_failed
 start "" "%cd%\index.html"
+exit /b 0
+
+:generator_failed
+echo Failed to generate data.js.
+pause
+exit /b 1

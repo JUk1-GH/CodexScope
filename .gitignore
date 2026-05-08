@@ -11,6 +11,8 @@ __pycache__/
 data.js
 !data.sample.js
 .codexscope-cache.json
+codexscope-generator
+codexscope-generator.exe
 
 # Local visual audit artifacts.
 *.png

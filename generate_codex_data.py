@@ -91,6 +91,7 @@ class SessionStats:
     completions: int = 0
     failures: int = 0
     usage: dict[str, int] = field(default_factory=lambda: {key: 0 for key in USAGE_KEYS})
+    prev_total_usage: dict[str, int] | None = None
 
 
 def add_usage(dst: dict[str, int], src: dict[str, Any] | None) -> None:
@@ -100,6 +101,26 @@ def add_usage(dst: dict[str, int], src: dict[str, Any] | None) -> None:
         value = src.get(key)
         if isinstance(value, (int, float)) and math.isfinite(value):
             dst[key] += int(value)
+
+
+def usage_snapshot(src: dict[str, Any] | None) -> dict[str, int] | None:
+    if not isinstance(src, dict):
+        return None
+    usage: dict[str, int] = {}
+    has_value = False
+    for key in USAGE_KEYS:
+        value = src.get(key)
+        if isinstance(value, (int, float)) and math.isfinite(value):
+            usage[key] = max(0, int(value))
+            has_value = True
+        else:
+            usage[key] = 0
+    return usage if has_value else None
+
+
+def usage_delta(current: dict[str, int], previous: dict[str, int]) -> dict[str, int] | None:
+    usage = {key: max(0, current.get(key, 0) - previous.get(key, 0)) for key in USAGE_KEYS}
+    return usage if any(usage.values()) else None
 
 
 def safe_percent(value: Any) -> float | None:
@@ -173,14 +194,22 @@ def load_sessions(root: Path, cutoff: datetime) -> tuple[list[SessionStats], lis
                     latest_limits_ts = ts or latest_limits_ts
 
                 info = payload.get("info") or {}
-                usage = info.get("last_token_usage")
-                if isinstance(usage, dict) and ts and ts >= cutoff:
+                last_usage = usage_snapshot(info.get("last_token_usage"))
+                total_usage = usage_snapshot(info.get("total_token_usage"))
+                prev_total_usage = stat.prev_total_usage
+                if total_usage:
+                    stat.prev_total_usage = total_usage
+                if ts and ts >= cutoff:
+                    # token_count can repeat identical snapshots; count cumulative deltas, not every snapshot.
+                    usage = usage_delta(total_usage, prev_total_usage) if total_usage and prev_total_usage else last_usage
+                    if not usage:
+                        continue
                     add_usage(stat.usage, usage)
                     stat.calls += 1
                     events.append({
                         "ts": ts,
                         "sid": stat.sid,
-                        "usage": {key: int(usage.get(key) or 0) for key in USAGE_KEYS},
+                        "usage": usage,
                         "model": stat.model,
                     })
                 continue

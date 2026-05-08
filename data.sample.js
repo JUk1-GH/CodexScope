@@ -7,7 +7,7 @@ window.QUOTASCOPE_DATA = {
     end: 1778256960000
   },
   sessionsCatalog: {
-    sample_01: { name: "QuotaScope", model: "gpt-5.5" },
+    sample_01: { name: "CodexScope", model: "gpt-5.5" },
     sample_02: { name: "Design Review", model: "gpt-5.4" },
     sample_03: { name: "CLI Agent", model: "gpt-5.3-codex-spark" }
   },

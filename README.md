@@ -1,16 +1,16 @@
-# QuotaScope
+# CodexScope
 
 [![LINUX DO](https://img.shields.io/badge/LINUX-DO-FFB003?style=flat-square)](https://linux.do)
 
-QuotaScope is a local-first dashboard for inspecting Codex usage from local session logs. It turns local Codex metadata into a clean desktop dashboard with token trends, quota and risk status, session rankings, model rankings, request distribution, cache hit rate, and estimated cost.
+CodexScope is a local-first dashboard for inspecting Codex usage from local session logs. It turns local Codex metadata into a clean desktop dashboard with token trends, quota and risk status, session rankings, model rankings, request distribution, cache hit rate, and estimated cost.
 
-![QuotaScope dashboard](assets/dashboard-24h.png)
+![CodexScope dashboard](assets/codexscope-dashboard-24h.png)
 
 The dashboard is a static HTML app: no backend, no account connection, and no hosted telemetry. Your real usage export stays local in `data.js`, which is intentionally ignored by git.
 
 ## Why
 
-Codex usage is easiest to understand when quota, token volume, model mix, and session-level hotspots are visible in one place. QuotaScope is built for that narrow job: open a local page, generate a local export, and see where usage went without shipping prompts or project data to another service.
+Codex usage is easiest to understand when quota, token volume, model mix, and session-level hotspots are visible in one place. CodexScope is built for that narrow job: open a local page, generate a local export, and see where usage went without shipping prompts or project data to another service.
 
 ## Features
 
@@ -74,7 +74,7 @@ The generator writes `data.js` next to `index.html`. Once that file exists, the 
 
 The cost card is an estimate, not an official bill. It uses local token counts and a built-in table based on OpenAI's published USD model prices. Actual ChatGPT/Codex billing, credits, and subscription quota status should always be checked with the official account or billing page.
 
-USD is the source currency. The CNY view is only a display conversion. When available, QuotaScope fetches the USD/CNY rate from the Frankfurter API with the ECB provider selected. If that request fails, it falls back to the last bundled reference rate and marks the conversion as offline fallback in the UI.
+USD is the source currency. The CNY view is only a display conversion. When available, CodexScope fetches the USD/CNY rate from the Frankfurter API with the ECB provider selected. If that request fails, it falls back to the last bundled reference rate and marks the conversion as offline fallback in the UI.
 
 ## Verify Layout
 
@@ -87,7 +87,7 @@ npm run verify
 
 ## Privacy
 
-QuotaScope does not send data to a server. `generate_codex_data.py` reads local Codex session logs and exports only usage metadata:
+CodexScope does not send data to a server. `generate_codex_data.py` reads local Codex session logs and exports only usage metadata:
 
 - session id and working-directory basename
 - model name

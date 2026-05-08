@@ -404,7 +404,7 @@ def build_payload(root: Path, days: int, trend_minutes: int) -> dict[str, Any]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate QuotaScope Codex data.js")
+    parser = argparse.ArgumentParser(description="Generate CodexScope Codex data.js")
     parser.add_argument("--root", default=str(Path.home() / ".codex" / "sessions"))
     parser.add_argument("--out", default=str(Path(__file__).with_name("data.js")))
     parser.add_argument("--days", type=int, default=30)

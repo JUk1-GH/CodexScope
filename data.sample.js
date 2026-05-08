@@ -1,4 +1,5 @@
 window.QUOTASCOPE_DATA = {
+  sample: true,
   generatedAt: "2026-05-09 00:16:00",
   windowDays: 30,
   availableRange: {

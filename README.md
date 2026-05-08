@@ -23,9 +23,9 @@ Codex usage is easiest to understand when quota, token volume, model mix, and se
 
 ## Quick Start
 
-Open `index.html` directly in a browser to view the bundled sample data.
+Download the project and open `index.html` directly in a browser. It will show bundled sample data immediately, so you can preview the dashboard without running any command.
 
-To view your own local Codex usage on macOS or Linux:
+To switch from the demo to your own local Codex usage on macOS or Linux, generate `data.js` once:
 
 ```bash
 python3 generate_codex_data.py
@@ -50,7 +50,7 @@ If your Codex sessions are stored elsewhere, pass the path explicitly:
 py .\generate_codex_data.py --root "$env:USERPROFILE\.codex\sessions"
 ```
 
-The generator writes `data.js` next to `index.html`. That file may contain private project names, session ids, timestamps, usage patterns, and quota status, so it is excluded by `.gitignore`.
+The generator writes `data.js` next to `index.html`. Once that file exists, the dashboard automatically uses your real local data instead of the bundled demo. `data.js` may contain private project names, session ids, timestamps, usage patterns, and quota status, so it is excluded by `.gitignore`.
 
 ## What Gets Displayed
 

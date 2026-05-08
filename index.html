@@ -3299,9 +3299,9 @@
 
       <div class="actions">
         <div class="sources" aria-label="Codex 数据来源">
-          <span class="source-chip primary">Codex 桌面端</span>
-          <span class="source-chip">本地日志</span>
-          <span class="source-chip">额度状态</span>
+          <span class="source-chip primary" id="sourcePrimary">Codex 桌面端</span>
+          <span class="source-chip" id="sourceSecondary">本地日志</span>
+          <span class="source-chip" id="sourceTertiary">额度状态</span>
         </div>
         <div class="date-filter" id="dateFilter" aria-label="日期筛选">
           <button class="period-btn" type="button" data-range="24h">近24小时</button>
@@ -3830,7 +3830,11 @@
         setText("peakRate", (summary.peakTpmLabel || "--").replace(/\s*TPM$/, ""));
         setText("chartMeta", `累计 ${summary.totalTokensLabel || "--"}`);
       };
-      setText("syncText", `${data.generatedAt?.slice(11, 16) || "--"} 已同步`);
+      const isSampleData = data.sample === true;
+      setText("sourcePrimary", isSampleData ? "示例数据" : "Codex 桌面端");
+      setText("sourceSecondary", isSampleData ? "直接预览" : "本地日志");
+      setText("sourceTertiary", isSampleData ? "运行脚本看真实数据" : "额度状态");
+      setText("syncText", isSampleData ? "Demo 预览" : `${data.generatedAt?.slice(11, 16) || "--"} 已同步`);
 
       const primaryRemain = limits.primaryRemaining ?? null;
       const secondaryRemain = limits.secondaryRemaining ?? null;

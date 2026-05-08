@@ -552,9 +552,9 @@
     .quota {
       min-height: 210px;
       display: grid;
-      grid-template-columns: 220px 1fr;
+      grid-template-columns: 168px minmax(0, 1fr);
       align-items: center;
-      gap: 20px;
+      gap: 16px;
     }
 
     .badge {
@@ -570,14 +570,14 @@
 
     .ringbox {
       position: relative;
-      height: 210px;
+      height: 180px;
       display: grid;
       place-items: center;
     }
 
     .ringbox > svg {
-      width: 210px;
-      height: 210px;
+      width: 180px;
+      height: 180px;
       transform: rotate(-90deg);
     }
 
@@ -675,11 +675,59 @@
       background: var(--teal);
     }
 
+    .fill.amber {
+      background: var(--amber);
+    }
+
     .quota-note {
       grid-column: 2 / -1;
       margin-top: -7px;
       color: #6c7f98;
       font-size: 12px;
+    }
+
+    .quota-risk {
+      min-width: 0;
+      align-self: center;
+    }
+
+    .quota-risk-list {
+      gap: 11px;
+    }
+
+    .quota-risk-list .risk-row {
+      grid-template-columns: 22px 62px minmax(44px, 1fr) 96px;
+      gap: 8px;
+      min-height: 28px;
+    }
+
+    .quota-risk-list .risk-row .percent {
+      display: none;
+    }
+
+    .quota-risk-list .risk-row .value {
+      color: #132846;
+      font-size: 17px;
+      font-weight: 820;
+      line-height: 1.05;
+      white-space: nowrap;
+    }
+
+    .quota-risk-list .risk-row .value small {
+      display: block;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 4px;
+      color: #6d7f96;
+      font-size: 11px;
+      font-weight: 560;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .quota-risk-list .warning {
+      margin-top: 10px;
     }
 
     .metrics {
@@ -858,7 +906,7 @@
     .lower {
       grid-column: 1 / -1;
       display: grid;
-      grid-template-columns: 1.05fr 1fr 0.95fr;
+      grid-template-columns: 1.02fr .95fr 1.22fr;
       gap: 16px;
     }
 
@@ -1031,7 +1079,8 @@
     .bar span.violet { background: var(--violet); }
 
     .model-row .tokens,
-    .model-row .latency {
+    .model-row .latency,
+    .model-row .model-cost {
       color: #405772;
       text-align: right;
       font-size: 13px;
@@ -1055,6 +1104,14 @@
       gap: 10px;
       color: #314863;
       font-size: 13px;
+      min-width: 0;
+    }
+
+    .risk-row strong {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .risk-icon {
@@ -1069,10 +1126,16 @@
 
     .risk-row .track {
       height: 6px;
+      min-width: 0;
     }
 
     .risk-row .value,
     .risk-row .percent {
+      min-width: 0;
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       color: #405772;
       text-align: right;
       font-size: 12px;
@@ -1101,6 +1164,335 @@
       display: block;
       margin-bottom: 3px;
       font-size: 14px;
+    }
+
+    .warning > div {
+      min-width: 0;
+    }
+
+    .warning strong,
+    .warning span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .cost-panel {
+      min-width: 0;
+    }
+
+    .cost-title {
+      align-items: center;
+    }
+
+    .cost-source {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: #5f7189;
+      font-size: 12px;
+      font-weight: 720;
+      white-space: nowrap;
+    }
+
+    .cost-source span {
+      width: 16px;
+      height: 16px;
+      display: inline-grid;
+      place-items: center;
+      border: 1px solid #9fb5d1;
+      border-radius: 50%;
+      color: #5c7190;
+      font-size: 11px;
+      font-family: var(--mono);
+      line-height: 1;
+    }
+
+    .cost-content {
+      display: grid;
+      grid-template-columns: minmax(118px, .78fr) minmax(0, 1.22fr);
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .cost-summary {
+      min-width: 0;
+      padding: 13px 14px;
+      border: 1px solid #dbe8f7;
+      border-radius: 8px;
+      background:
+        linear-gradient(145deg, rgba(232, 243, 255, 0.95), rgba(255, 255, 255, 0.92)),
+        #fff;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.86);
+    }
+
+    .cost-kicker {
+      color: #516987;
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .cost-total {
+      margin-top: 8px;
+      color: var(--blue);
+      font-size: 36px;
+      font-weight: 860;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .cost-stats {
+      display: grid;
+      margin-top: 14px;
+      border: 1px solid #dce7f5;
+      border-radius: 8px;
+      overflow: hidden;
+      background: rgba(255,255,255,.58);
+    }
+
+    .cost-stat {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 54px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      padding: 8px 10px;
+      border-top: 1px solid #dce7f5;
+      color: #162b49;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .cost-stat:first-child {
+      border-top: 0;
+    }
+
+    .cost-stat b {
+      text-align: right;
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .cost-composition {
+      min-width: 0;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .cost-subtitle {
+      margin: 0;
+      color: #132846;
+      font-size: 14px;
+      font-weight: 780;
+    }
+
+    .cost-stack {
+      display: flex;
+      height: 14px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e9f0f8;
+      box-shadow: inset 0 0 0 1px rgba(219,231,245,.7);
+    }
+
+    .cost-stack span {
+      min-width: 2px;
+      height: 100%;
+      border-right: 1px solid rgba(255,255,255,.72);
+    }
+
+    .cost-stack span:last-child {
+      border-right: 0;
+    }
+
+    .cost-input { background: var(--blue); }
+    .cost-cache { background: var(--teal); }
+    .cost-output { background: var(--sky); }
+    .cost-reasoning { background: var(--violet); }
+
+    .cost-parts {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .cost-part {
+      min-width: 0;
+      padding-left: 10px;
+      border-left: 1px dashed #d7e3f2;
+    }
+
+    .cost-part:first-child {
+      padding-left: 0;
+      border-left: 0;
+    }
+
+    .cost-name {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #38516f;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .cost-name i {
+      width: 9px;
+      height: 9px;
+      flex: none;
+      border-radius: 50%;
+    }
+
+    .cost-value {
+      margin-top: 7px;
+      color: #10233f;
+      font-size: 18px;
+      font-weight: 840;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .cost-percent {
+      display: inline-flex;
+      margin-top: 6px;
+      padding: 4px 9px;
+      border-radius: 8px;
+      background: #eef5ff;
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 760;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .cost-part:nth-child(2) .cost-percent {
+      background: #e8fbf7;
+      color: var(--teal);
+    }
+
+    .cost-part:nth-child(3) .cost-percent {
+      background: #eef7ff;
+      color: #2f80ff;
+    }
+
+    .cost-part:nth-child(4) .cost-percent {
+      background: #f2edff;
+      color: var(--violet);
+    }
+
+    .cost-bottom {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr);
+      gap: 14px;
+      padding-top: 13px;
+      border-top: 1px solid #dce7f5;
+    }
+
+    .cost-mini-title {
+      margin: 0 0 8px;
+      color: #132846;
+      font-size: 13px;
+      font-weight: 780;
+    }
+
+    .cost-model-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .cost-model-row {
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr) 58px;
+      gap: 8px;
+      align-items: center;
+      color: #172b49;
+      font-size: 12px;
+      font-weight: 680;
+    }
+
+    .cost-model-row .model-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .cost-trend {
+      min-width: 0;
+    }
+
+    .cost-chart {
+      height: 82px;
+      display: flex;
+      align-items: flex-end;
+      gap: 4px;
+      padding: 4px 0 14px;
+      border-bottom: 1px solid #cdddf0;
+      background:
+        linear-gradient(to bottom, #e3ecf8 0 1px, transparent 1px) 0 14px / 100% 28px repeat-y;
+    }
+
+    .cost-chart span {
+      flex: 1 1 0;
+      min-width: 3px;
+      border-radius: 3px 3px 1px 1px;
+      background: linear-gradient(180deg, #5f9efa, #a8ccff);
+    }
+
+    .cost-peak {
+      position: relative;
+      background: linear-gradient(180deg, #1668f2, #79b5ff) !important;
+    }
+
+    .cost-peak::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: -6px;
+      width: 10px;
+      height: 10px;
+      transform: translateX(-50%);
+      border: 3px solid var(--blue);
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 6px 12px rgba(22,104,242,.22);
+    }
+
+    .cost-axis {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 5px;
+      color: #687d97;
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .cost-footnote {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      padding: 8px 10px;
+      border: 1px solid #d4e3f5;
+      border-radius: 8px;
+      background: #fbfdff;
+      color: #536984;
+      font-size: 12px;
+      font-weight: 640;
+    }
+
+    .cost-footnote svg {
+      width: 18px;
+      height: 18px;
+      flex: none;
+      color: var(--blue);
     }
 
     .coverage {
@@ -1191,6 +1583,45 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+
+      .quota-risk-list {
+        gap: 7px;
+      }
+
+      .quota-risk-list .risk-row {
+        grid-template-columns: 20px 54px minmax(48px, 1fr) 66px;
+        gap: 7px;
+      }
+
+      .quota-risk-list .risk-row .value {
+        font-size: 15px;
+      }
+
+      .quota-risk-list .risk-row .value small {
+        font-size: 9px;
+      }
+
+      .quota-risk-list .warning {
+        margin-top: 7px;
+      }
+
+      .cost-content,
+      .cost-bottom {
+        grid-template-columns: 1fr;
+      }
+
+      .cost-total {
+        font-size: 32px;
+      }
+
+      .cost-parts {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .cost-part:nth-child(3) {
+        padding-left: 0;
+        border-left: 0;
       }
 
       .metrics {
@@ -1652,27 +2083,27 @@
       }
 
       .quota {
-        min-height: 170px;
-        grid-template-columns: 1fr;
-        gap: 4px;
+        min-height: 152px;
+        grid-template-columns: 76px minmax(0, 1fr);
+        gap: 8px;
       }
 
       .ringbox {
-        height: 104px;
+        height: 86px;
       }
 
       .ringbox > svg {
-        width: 116px;
-        height: 116px;
+        width: 94px;
+        height: 94px;
       }
 
       .shield {
-        font-size: 10px;
+        font-size: 9px;
       }
 
       .shield svg {
-        width: 28px;
-        height: 28px;
+        width: 24px;
+        height: 24px;
       }
 
       .quota-values {
@@ -1759,7 +2190,7 @@
       }
 
       .lower {
-        grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr) minmax(260px, .92fr);
+        grid-template-columns: minmax(0, 1fr) minmax(0, .92fr) minmax(285px, 1.12fr);
         gap: 12px;
       }
 
@@ -1796,7 +2227,8 @@
       }
 
       .model-row .tokens,
-      .model-row .latency {
+      .model-row .latency,
+      .model-row .model-cost {
         font-size: 11px;
       }
 
@@ -1808,6 +2240,48 @@
         grid-template-columns: 22px 36px minmax(70px, 1fr) 62px 34px;
         gap: 8px;
         font-size: 12px;
+      }
+
+      .quota-risk-list {
+        gap: 5px;
+      }
+
+      .quota-risk-list .risk-row {
+        grid-template-columns: 18px 48px minmax(34px, 1fr) 54px;
+        gap: 5px;
+        min-height: 21px;
+        font-size: 11px;
+      }
+
+      .quota-risk-list .risk-icon {
+        width: 16px;
+        height: 16px;
+      }
+
+      .quota-risk-list .risk-row .track {
+        height: 5px;
+      }
+
+      .quota-risk-list .risk-row .value {
+        font-size: 14px;
+      }
+
+      .quota-risk-list .risk-row .value small {
+        margin-top: 2px;
+        font-size: 8px;
+      }
+
+      .quota-risk-list .warning {
+        margin-top: 5px;
+        grid-template-columns: 22px 1fr 10px;
+        gap: 6px;
+        padding: 6px 7px;
+        font-size: 10px;
+      }
+
+      .quota-risk-list .warning svg {
+        width: 22px;
+        height: 22px;
       }
 
       .risk-row .value,
@@ -1823,6 +2297,31 @@
 
       .warning strong {
         font-size: 12px;
+      }
+
+      .cost-summary {
+        padding: 11px 12px;
+      }
+
+      .cost-total {
+        font-size: 30px;
+      }
+
+      .cost-parts {
+        gap: 8px;
+      }
+
+      .cost-value {
+        font-size: 16px;
+      }
+
+      .cost-model-row {
+        grid-template-columns: 82px minmax(0, 1fr) 54px;
+        font-size: 11px;
+      }
+
+      .cost-chart {
+        height: 72px;
       }
 
       .coverage {
@@ -1896,7 +2395,7 @@
       }
 
       .chart-wrap {
-        height: 128px;
+        height: 112px;
       }
 
       .quota {
@@ -1974,6 +2473,41 @@
         padding: 6px 9px;
       }
 
+      .cost-content {
+        gap: 10px;
+      }
+
+      .cost-summary {
+        padding: 9px 10px;
+      }
+
+      .cost-total {
+        margin-top: 5px;
+        font-size: 27px;
+      }
+
+      .cost-stats {
+        margin-top: 8px;
+      }
+
+      .cost-stat {
+        padding: 6px 8px;
+      }
+
+      .cost-bottom {
+        gap: 10px;
+        padding-top: 9px;
+      }
+
+      .cost-chart {
+        height: 58px;
+      }
+
+      .cost-footnote {
+        padding: 6px 8px;
+        font-size: 10px;
+      }
+
       .coverage {
         padding-top: 6px;
         padding-bottom: 6px;
@@ -1982,9 +2516,25 @@
       .coverage h3 {
         margin-bottom: 4px;
       }
+
+      .distribution-chart {
+        min-height: 96px;
+      }
+
+      .dist-bar {
+        gap: 5px;
+      }
     }
 
     @media (max-height: 760px) and (min-width: 1181px) {
+      .chart-wrap {
+        height: 146px;
+      }
+
+      .distribution-chart {
+        min-height: 116px;
+      }
+
       .metrics {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         grid-template-rows: repeat(2, minmax(0, 1fr));
@@ -2134,7 +2684,7 @@
         grid-template-columns: minmax(0, 1fr) 58px;
         grid-template-areas:
           "name tokens"
-          "bar latency";
+          "bar cost";
         gap: 5px 8px;
         min-height: 48px;
       }
@@ -2152,8 +2702,9 @@
         grid-area: tokens;
       }
 
-      .model-row .latency {
-        grid-area: latency;
+      .model-row .latency,
+      .model-row .model-cost {
+        grid-area: cost;
       }
 
       .risk-row {
@@ -2170,6 +2721,24 @@
 
       .warning > span:last-child {
         display: none;
+      }
+
+      .cost-source {
+        font-size: 11px;
+      }
+
+      .cost-content,
+      .cost-bottom {
+        grid-template-columns: 1fr;
+      }
+
+      .cost-parts {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .cost-part:nth-child(3) {
+        padding-left: 0;
+        border-left: 0;
       }
     }
 
@@ -2437,7 +3006,7 @@
         grid-template-columns: minmax(118px, 1fr) 1.3fr 64px;
         grid-template-areas:
           "name bar tokens"
-          "name bar latency";
+          "name bar cost";
         gap: 5px 12px;
         min-height: 50px;
       }
@@ -2454,8 +3023,9 @@
         grid-area: tokens;
       }
 
-      .model-row .latency {
-        grid-area: latency;
+      .model-row .latency,
+      .model-row .model-cost {
+        grid-area: cost;
       }
 
       .risk-row {
@@ -2464,6 +3034,20 @@
 
       .risk-row .percent {
         display: none;
+      }
+
+      .cost-content,
+      .cost-bottom {
+        grid-template-columns: 1fr;
+      }
+
+      .cost-parts {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .cost-part:nth-child(3) {
+        padding-left: 0;
+        border-left: 0;
       }
 
       .warning {
@@ -2636,7 +3220,7 @@
         <button class="tab" type="button" data-scroll-target="tokenPanel">Token</button>
         <button class="tab" type="button" data-scroll-target="sessionPanel">会话</button>
         <button class="tab" type="button" data-scroll-target="modelPanel">模型</button>
-        <button class="tab" type="button" data-scroll-target="riskPanel">速率</button>
+        <button class="tab" type="button" data-scroll-target="quotaPanel">速率</button>
       </nav>
 
       <div class="actions">
@@ -2699,7 +3283,7 @@
 
         <article id="quotaPanel" class="panel">
           <div class="panel-title">
-            <h2>真实剩余额度</h2>
+            <h2>额度与风险</h2>
             <span class="badge">来源：额度状态</span>
           </div>
           <div class="quota">
@@ -2720,24 +3304,9 @@
                 <span id="shieldState">等待数据</span>
               </div>
             </div>
-            <div class="quota-values">
-              <div class="quota-row">
-                <div class="quota-name">5h 窗口</div>
-                <div class="track"><div id="primaryFill" class="fill" style="width:0"></div></div>
-                <div id="primaryRemain" class="quota-value">--</div>
-                <div id="primaryNote" class="quota-note">等待 rate_limits</div>
-              </div>
-              <div class="quota-row">
-                <div class="quota-name">周限额</div>
-                <div class="track"><div id="secondaryFill" class="fill teal" style="width:0"></div></div>
-                <div id="secondaryRemain" class="quota-value">--</div>
-                <div id="secondaryNote" class="quota-note">等待 rate_limits</div>
-              </div>
-              <div class="quota-row">
-                <div class="quota-name">套餐</div>
-                <div class="track"><div class="fill" style="width:0"></div></div>
-                <div id="planType" class="quota-value">--</div>
-                <div class="quota-note">Codex ChatGPT 套餐</div>
+            <div class="quota-risk">
+              <div id="riskList" class="risk-list quota-risk-list">
+                <div class="list-empty">等待 rate_limits 与调用数据</div>
               </div>
             </div>
           </div>
@@ -2825,10 +3394,13 @@
             <button id="toggleModels" class="link" type="button" hidden>展开模型 <span>↓</span></button>
           </article>
 
-          <article id="riskPanel" class="panel">
-            <div class="panel-title"><h3>速率与风险</h3></div>
-            <div id="riskList" class="risk-list">
-              <div class="list-empty">等待 rate_limits 与调用数据</div>
+          <article id="costPanel" class="panel cost-panel">
+            <div class="panel-title cost-title">
+              <h3>费用统计</h3>
+              <span class="cost-source">按官方价格估算 <span aria-hidden="true">i</span></span>
+            </div>
+            <div id="costContent" class="cost-content">
+              <div class="list-empty">等待本地 token 用量</div>
             </div>
           </article>
         </section>
@@ -2881,7 +3453,9 @@
       let distributionRows = [];
       let sessionRows = data.sessions || [];
       let modelRows = data.models || [];
+      let costModelRows = [];
       let riskRows = data.risk || [];
+      let costSummary = {};
       const latestDataTime = Math.max(
         Number((data.availableRange || {}).end) || 0,
         ...records.map((record) => Number(record[0]) || 0),
@@ -2920,6 +3494,69 @@
         if (Math.abs(value) >= 1e3) return `${Math.round(value / 1e3)}K`;
         return `${Math.round(value)}`;
       };
+      const money = (value) => {
+        value = Number(value) || 0;
+        if (Math.abs(value) >= 1000) return `¥${Math.round(value).toLocaleString()}`;
+        return `¥${value.toFixed(2)}`;
+      };
+      const moneyCompact = (value) => {
+        value = Number(value) || 0;
+        if (Math.abs(value) >= 1000) return `¥${Math.round(value).toLocaleString()}`;
+        if (Math.abs(value) >= 100) return `¥${value.toFixed(0)}`;
+        return `¥${value.toFixed(2)}`;
+      };
+      const CNY_PER_USD = 7.2;
+      const MODEL_PRICING_USD_PER_M = [
+        { test: /gpt-5\.5/i, input: 5.00, cached: 0.50, output: 30.00 },
+        { test: /gpt-5\.4[-_ ]?mini/i, input: 0.75, cached: 0.075, output: 4.50 },
+        { test: /gpt-5\.4/i, input: 2.50, cached: 0.25, output: 15.00 },
+        { test: /gpt-5\.3[-_ ]?codex[-_ ]?spark/i, input: 1.75, cached: 0.175, output: 14.00 },
+        { test: /gpt-5\.3[-_ ]?codex/i, input: 1.75, cached: 0.175, output: 14.00 },
+        { test: /gpt-5\.2[-_ ]?codex/i, input: 1.75, cached: 0.175, output: 14.00 },
+        { test: /gpt-5\.1[-_ ]?codex|gpt-5[-_ ]?codex|gpt-5(?!\.\d)/i, input: 1.25, cached: 0.125, output: 10.00 },
+      ];
+      const pricingForModel = (model) => MODEL_PRICING_USD_PER_M.find((item) => item.test.test(String(model || ""))) || null;
+      const emptyCost = () => ({ input: 0, cached: 0, output: 0, reasoning: 0, total: 0, pricedTokens: 0, unpricedTokens: 0 });
+      const addCost = (target, source) => {
+        target.input += source.input || 0;
+        target.cached += source.cached || 0;
+        target.output += source.output || 0;
+        target.reasoning += source.reasoning || 0;
+        target.total += source.total || 0;
+        target.pricedTokens += source.pricedTokens || 0;
+        target.unpricedTokens += source.unpricedTokens || 0;
+        return target;
+      };
+      const priceRecord = (record) => {
+        const model = record[2] || "unknown";
+        const pricing = pricingForModel(model);
+        const inputTokens = Math.max(0, Number(record[3]) || 0);
+        const cachedRaw = Math.max(0, Number(record[4]) || 0);
+        const outputTokens = Math.max(0, Number(record[5]) || 0);
+        const reasoningRaw = Math.max(0, Number(record[6]) || 0);
+        const cachedTokens = inputTokens ? Math.min(inputTokens, cachedRaw) : cachedRaw;
+        const billableInput = Math.max(0, inputTokens - cachedTokens);
+        const billedReasoning = Math.min(outputTokens, reasoningRaw);
+        const visibleOutput = Math.max(0, outputTokens - billedReasoning);
+        const pricedTokens = billableInput + cachedTokens + visibleOutput + billedReasoning;
+        if (!pricing) {
+          return { ...emptyCost(), unpricedTokens: pricedTokens };
+        }
+        const multiplier = CNY_PER_USD / 1_000_000;
+        const input = billableInput * pricing.input * multiplier;
+        const cached = cachedTokens * pricing.cached * multiplier;
+        const output = visibleOutput * pricing.output * multiplier;
+        const reasoning = billedReasoning * pricing.output * multiplier;
+        return {
+          input,
+          cached,
+          output,
+          reasoning,
+          total: input + cached + output + reasoning,
+          pricedTokens,
+          unpricedTokens: 0,
+        };
+      };
       const rangeForPreset = (preset) => {
         const now = rangeNow();
         const today = localDayStart(new Date(now)).getTime();
@@ -2934,7 +3571,7 @@
         const end = Math.min(now, Math.max(startInput, endInput) + DAY);
         return { start, end, preset: "custom", label: formatRangeLabel(start, end, "custom") };
       };
-      const emptyUsage = () => ({ input: 0, cached: 0, output: 0, reasoning: 0, total: 0, requests: 0 });
+      const emptyUsage = () => ({ input: 0, cached: 0, output: 0, reasoning: 0, total: 0, requests: 0, cost: 0 });
       const buildBuckets = (filtered, range) => {
         const duration = Math.max(1, range.end - range.start);
         const dayCount = duration / DAY;
@@ -2955,6 +3592,7 @@
           bucket.reasoning += record[6] || 0;
           bucket.total += record[7] || 0;
           bucket.requests += 1;
+          bucket.cost += priceRecord(record).total || 0;
         }
         return buckets.map((bucket) => ({ ...bucket, label: formatBucketLabel(bucket.start, multiDay), stepMinutes: step / 60000 }));
       };
@@ -2963,9 +3601,12 @@
         const failures = failureRecords.filter((record) => record[0] >= range.start && record[0] <= range.end);
         const ttfb = ttfbRecords.filter((record) => record[0] >= range.start && record[0] <= range.end);
         const totals = emptyUsage();
+        const costs = emptyCost();
         const bySession = new Map();
         const byModel = new Map();
         for (const record of filtered) {
+          const recordCost = priceRecord(record);
+          addCost(costs, recordCost);
           totals.input += record[3] || 0;
           totals.cached += record[4] || 0;
           totals.output += record[5] || 0;
@@ -2979,14 +3620,15 @@
           session.tokens += record[7] || 0;
           session.requests += 1;
           bySession.set(sid, session);
-          const modelRow = byModel.get(model) || { name: model, tokens: 0, requests: 0, latencyTotal: 0, latencyCount: 0 };
+          const modelRow = byModel.get(model) || { name: model, tokens: 0, requests: 0, cost: 0, latencyTotal: 0, latencyCount: 0 };
           modelRow.tokens += record[7] || 0;
           modelRow.requests += 1;
+          modelRow.cost += recordCost.total || 0;
           byModel.set(model, modelRow);
         }
         for (const record of ttfb) {
           const model = record[2] || "unknown";
-          const modelRow = byModel.get(model) || { name: model, tokens: 0, requests: 0, latencyTotal: 0, latencyCount: 0 };
+          const modelRow = byModel.get(model) || { name: model, tokens: 0, requests: 0, cost: 0, latencyTotal: 0, latencyCount: 0 };
           modelRow.latencyTotal += record[3] || 0;
           modelRow.latencyCount += 1;
           byModel.set(model, modelRow);
@@ -3000,6 +3642,18 @@
         const maxSessionTokens = Math.max(1, ...sessions.map((row) => row.tokens));
         const models = Array.from(byModel.values()).sort((a, b) => b.tokens - a.tokens).slice(0, 12);
         const maxModelTokens = Math.max(1, ...models.map((row) => row.tokens));
+        const costModels = Array.from(byModel.values()).sort((a, b) => b.cost - a.cost).slice(0, 4);
+        const maxModelCost = Math.max(1, ...costModels.map((row) => row.cost));
+        const costParts = [
+          { key: "input", name: "输入", value: costs.input, className: "cost-input" },
+          { key: "cached", name: "缓存", value: costs.cached, className: "cost-cache" },
+          { key: "output", name: "输出", value: costs.output, className: "cost-output" },
+          { key: "reasoning", name: "推理", value: costs.reasoning, className: "cost-reasoning" },
+        ].map((part) => ({
+          ...part,
+          percent: costs.total ? part.value / costs.total * 100 : 0,
+          valueLabel: money(part.value),
+        }));
         return {
           label: range.label,
           summary: {
@@ -3016,6 +3670,14 @@
             peakTime: peak.label,
             peakTpmLabel: `${fmt(peak.total / Math.max(1, peak.stepMinutes))} TPM`,
           },
+          cost: {
+            total: costs.total,
+            totalLabel: money(costs.total),
+            averageLabel: money(totals.requests ? costs.total / totals.requests : 0),
+            rangeTokensLabel: fmt(totals.total),
+            parts: costParts,
+            unpricedTokens: costs.unpricedTokens,
+          },
           trend: buckets,
           distribution: buckets,
           sessions: sessions.map((row, index) => ({
@@ -3031,13 +3693,22 @@
             requests: row.requests,
             latency: row.latencyCount ? row.latencyTotal / row.latencyCount / 1000 : 0,
             latencyLabel: row.latencyCount ? `${(row.latencyTotal / row.latencyCount / 1000).toFixed(2)}s` : "--",
+            cost: row.cost || 0,
+            costLabel: money(row.cost || 0),
             percent: Math.round(row.tokens / maxModelTokens * 100),
           })),
+          costModels: costModels.map((row, index) => ({
+            name: row.name,
+            rank: index + 1,
+            cost: row.cost || 0,
+            costLabel: moneyCompact(row.cost || 0),
+            percent: Math.round((row.cost || 0) / maxModelCost * 100),
+          })),
           risk: [
-            {"name": "5h", "value": limits.primaryUsed || 0, "label": `已用 ${limits.primaryUsed || 0}%`},
-            {"name": "周限额", "value": limits.secondaryUsed || 0, "label": `已用 ${limits.secondaryUsed || 0}%`},
-            {"name": "缓存", "value": cacheHit, "label": `命中 ${cacheHit.toFixed(0)}%`},
-            {"name": "失败", "value": failureRate, "label": `${failures.length} (${failureRate.toFixed(1)}%)`},
+            { name: "5h 窗口", value: limits.primaryRemaining ?? 0, label: `${pct(limits.primaryRemaining ?? 0)} 剩余`, note: `已用 ${pct(limits.primaryUsed || 0)} · ${limits.primaryReset || "--"}`, tone: "blue" },
+            { name: "周限额", value: limits.secondaryRemaining ?? 0, label: `${pct(limits.secondaryRemaining ?? 0)} 剩余`, note: `已用 ${pct(limits.secondaryUsed || 0)} · ${limits.secondaryReset || "--"}`, tone: "teal" },
+            { name: "缓存", value: cacheHit, label: `命中 ${cacheHit.toFixed(0)}%`, note: "输入 token", tone: "teal" },
+            { name: "失败", value: failureRate, label: `${failureRate.toFixed(1)}%`, note: `${failures.length} 次失败`, tone: "amber" },
           ],
         };
       };
@@ -3048,7 +3719,9 @@
         distributionRows = stats.distribution;
         sessionRows = stats.sessions;
         modelRows = stats.models;
+        costModelRows = stats.costModels;
         riskRows = stats.risk;
+        costSummary = stats.cost;
         setText("tokenTotal", summary.totalTokensLabel || "--");
         setText("inputTokens", summary.inputLabel || "--");
         setText("cachedTokens", summary.cachedLabel || "--");
@@ -3069,12 +3742,14 @@
       setText("shieldState", limits.rateLimitReachedType ? "已触发限流" : hasLimitData ? "当前安全" : "等待数据");
       if (primaryRemain !== null) {
         setText("primaryRemain", pct(primaryRemain));
-        $("primaryFill").style.width = pct(primaryRemain);
+        const primaryFill = $("primaryFill");
+        if (primaryFill) primaryFill.style.width = pct(primaryRemain);
         setText("primaryNote", `已用 ${pct(limits.primaryUsed)} · reset ${limits.primaryReset || "--"}`);
       }
       if (secondaryRemain !== null) {
         setText("secondaryRemain", pct(secondaryRemain));
-        $("secondaryFill").style.width = pct(secondaryRemain);
+        const secondaryFill = $("secondaryFill");
+        if (secondaryFill) secondaryFill.style.width = pct(secondaryRemain);
         setText("secondaryNote", `已用 ${pct(limits.secondaryUsed)} · reset ${limits.secondaryReset || "--"}`);
       }
       setText("planType", (limits.planType || "Pro").toUpperCase());
@@ -3288,7 +3963,7 @@
         const rows = uiState.modelsExpanded ? allRows : allRows.slice(0, 4);
         const head = `
           <div class="session-head" style="grid-template-columns:120px 1fr 72px 62px">
-            <span>模型</span><span></span><span>Token 总量</span><span>首 Token 延迟</span>
+            <span>模型</span><span></span><span>Token 总量</span><span>预估费用</span>
           </div>`;
         if (!allRows.length) {
           $("modelList").innerHTML = head + `<div class="list-empty">当前范围没有模型调用</div>`;
@@ -3301,7 +3976,7 @@
             <span class="name">${esc(row.name)}</span>
             <span class="bar"><span class="${colors[index] || ""}" style="width:${Math.max(4, row.percent || 0)}%"></span></span>
             <span class="tokens">${esc(row.tokensLabel)}</span>
-            <span class="latency ${row.latency > 6 ? "slow" : ""}">${esc(row.latencyLabel)}</span>
+            <span class="model-cost">${esc(row.costLabel || "--")}</span>
           </div>`).join("");
         const toggle = $("toggleModels");
         if (toggle) {
@@ -3316,8 +3991,8 @@
         $("riskList").innerHTML = rows.map((row, index) => `
           <div class="risk-row">
             <span class="risk-icon">${labels[index] || "•"}</span><strong>${esc(row.name)}</strong>
-            <span class="track"><span class="fill ${index === 2 ? "teal" : ""}" style="display:block;width:${Math.max(2, Math.min(100, row.value || 0))}%"></span></span>
-            <span class="value">${esc(row.label)}</span><span class="percent">${pct(row.value)}</span>
+            <span class="track"><span class="fill ${row.tone === "teal" ? "teal" : row.tone === "amber" ? "amber" : ""}" style="display:block;width:${Math.max(2, Math.min(100, row.value || 0))}%"></span></span>
+            <span class="value">${esc(row.label)}${row.note ? `<small>${esc(row.note)}</small>` : ""}</span><span class="percent">${pct(row.value)}</span>
           </div>`).join("") + `
           <div class="warning">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -3385,6 +4060,81 @@
           <div class="dist-x-axis" aria-label="时间段">${xLabels}</div>`;
       };
 
+      const renderCost = () => {
+        const content = $("costContent");
+        if (!content) return;
+        const cost = costSummary || {};
+        const parts = cost.parts || [];
+        const rows = distributionRows || [];
+        const totalCost = Number(cost.total) || 0;
+        const hasUsage = rows.some((row) => row.requests || row.total);
+        if (!hasUsage) {
+          content.innerHTML = `<div class="list-empty">当前范围没有可估算费用的 token 用量</div>`;
+          return;
+        }
+        const partMarkup = parts.map((part) => `
+          <div class="cost-part">
+            <div class="cost-name"><i class="${esc(part.className)}"></i>${esc(part.name)}</div>
+            <div class="cost-value">${esc(part.valueLabel)}</div>
+            <span class="cost-percent">${(part.percent || 0).toFixed(1)}%</span>
+          </div>`).join("");
+        const stackMarkup = parts.map((part) => {
+          const width = totalCost ? Math.max(part.value ? 1.5 : 0, part.value / totalCost * 100) : 0;
+          return `<span class="${esc(part.className)}" style="width:${width}%"></span>`;
+        }).join("");
+        const modelRowsMarkup = (costModelRows || []).filter((row) => row.cost > 0).slice(0, 3).map((row) => `
+          <div class="cost-model-row">
+            <span class="model-name">${esc(row.name)}</span>
+            <span class="bar"><span style="width:${Math.max(4, row.percent || 0)}%"></span></span>
+            <span>${esc(row.costLabel)}</span>
+          </div>`).join("") || `<div class="list-empty">当前范围没有匹配价格的模型</div>`;
+        const costBuckets = rows.map((row, index) => ({
+          label: row.label,
+          cost: Number(row.cost) || 0,
+          index,
+        }));
+        const maxBucket = Math.max(0, ...costBuckets.map((row) => row.cost));
+        const peakIndex = costBuckets.reduce((best, row) => row.cost > costBuckets[best].cost ? row.index : best, 0);
+        const costBars = costBuckets.map((row) => {
+          const height = maxBucket ? Math.max(3, Math.round(row.cost / maxBucket * 100)) : 0;
+          return `<span class="${row.index === peakIndex && row.cost ? "cost-peak" : ""}" style="height:${height}%" title="${esc(row.label)} · ${esc(moneyCompact(row.cost))}"></span>`;
+        }).join("");
+        const firstLabel = costBuckets[0]?.label || "--";
+        const lastLabel = costBuckets[costBuckets.length - 1]?.label || "--";
+        content.innerHTML = `
+          <div class="cost-summary">
+            <div class="cost-kicker">预估费用</div>
+            <div class="cost-total">${esc(cost.totalLabel || "¥0.00")}</div>
+            <div class="cost-stats">
+              <div class="cost-stat"><span>平均</span><b>${esc(cost.averageLabel || "¥0.00")} / 调用</b></div>
+              <div class="cost-stat"><span>本区间</span><b>${esc(cost.rangeTokensLabel || "--")}</b></div>
+            </div>
+          </div>
+          <div class="cost-composition">
+            <h4 class="cost-subtitle">成本构成</h4>
+            <div class="cost-stack" aria-label="成本构成">${stackMarkup}</div>
+            <div class="cost-parts">${partMarkup}</div>
+          </div>
+          <div class="cost-bottom">
+            <div>
+              <h4 class="cost-mini-title">模型费用排行</h4>
+              <div class="cost-model-list">${modelRowsMarkup}</div>
+            </div>
+            <div class="cost-trend">
+              <h4 class="cost-mini-title">费用走势</h4>
+              <div class="cost-chart" aria-label="费用走势">${costBars}</div>
+              <div class="cost-axis"><span>${esc(firstLabel)}</span><span>${esc(lastLabel)}</span></div>
+            </div>
+          </div>
+          <div class="cost-footnote">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 3.2 19 6.5v5.2c0 4.4-2.8 7.3-7 9.1-4.2-1.8-7-4.7-7-9.1V6.5l7-3.3Z" fill="#eaf3ff" stroke="currentColor" stroke-width="1.8"/>
+              <path d="m8.8 12.1 2.1 2.1 4.4-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>仅基于本地 token 用量与公开价格估算，实际账单以官方为准。</span>
+          </div>`;
+      };
+
       const renderSparks = () => {
         setPath("requestSpark", sparkPath(distributionRows, "requests", 126, 42));
         setPath("peakSpark", sparkPath(trendRows, "total", 126, 42));
@@ -3398,6 +4148,7 @@
         renderSessions();
         renderModels();
         renderRisk();
+        renderCost();
       };
 
       const applyRange = (preset) => {

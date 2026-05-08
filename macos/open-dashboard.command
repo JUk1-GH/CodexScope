@@ -17,10 +17,8 @@ if command -v go >/dev/null 2>&1; then
   ./codexscope-generator
 elif [ -x ./codexscope-generator ]; then
   ./codexscope-generator
-elif command -v python3 >/dev/null 2>&1; then
-  python3 generate_codex_data.py
 else
-  echo "Go or Python 3 was not found. Please install Go or Python 3 first."
+  echo "Go was not found. Please install Go first."
   exit 1
 fi
 

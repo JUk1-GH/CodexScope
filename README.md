@@ -34,7 +34,7 @@ To view your real local Codex usage, use the launcher for your system:
 - **macOS**: double-click `macos/open-dashboard.command`
 - **Windows**: double-click `windows/open-dashboard.cmd`
 
-The launcher generates `data.js` from your local Codex logs and then opens `index.html`. It uses the Go generator when Go is available, and falls back to Python 3 if needed.
+The launcher generates `data.js` from your local Codex logs with the Go generator and then opens `index.html`.
 Subsequent runs reuse a local `.codexscope-cache.json` file and only rescan changed session logs, so repeated launches should be much faster.
 
 You can also run the same steps manually on macOS or Linux:
@@ -89,7 +89,7 @@ npm run verify
 
 ## Privacy
 
-CodexScope does not send data to a server. `generate_codex_data.py` reads local Codex session logs and exports only usage metadata:
+CodexScope does not send data to a server. `generate_codex_data.go` reads local Codex session logs and exports only usage metadata:
 
 - session id and working-directory basename
 - model name

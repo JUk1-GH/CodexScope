@@ -16,19 +16,7 @@ if exist "%cd%\codexscope-generator.exe" (
   goto open_dashboard
 )
 
-where py >nul 2>nul
-if %errorlevel%==0 (
-  py -3 generate_codex_data.py
-  goto open_dashboard
-)
-
-where python >nul 2>nul
-if %errorlevel%==0 (
-  python generate_codex_data.py
-  goto open_dashboard
-)
-
-echo Go or Python 3 was not found. Please install Go or Python 3 first.
+echo Go was not found. Please install Go first.
 pause
 exit /b 1
 

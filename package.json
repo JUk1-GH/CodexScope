@@ -6,8 +6,6 @@
   "type": "commonjs",
   "scripts": {
     "generate": "go run generate_codex_data.go",
-    "generate:py": "python3 generate_codex_data.py",
-    "generate:py:win": "py generate_codex_data.py",
     "build:generator": "go build -o codexscope-generator generate_codex_data.go",
     "verify": "node verify_responsive.js"
   },

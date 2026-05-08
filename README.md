@@ -25,7 +25,9 @@ Codex usage is easiest to understand when quota, token volume, model mix, and se
 
 Download the project and open `index.html` directly in a browser. It will show bundled sample data immediately, so you can preview the dashboard without running any command.
 
-To switch from the demo to your own local Codex usage on macOS or Linux, generate `data.js` once:
+On macOS, double-click `open-dashboard.command` to generate your local data and open the dashboard in one step.
+
+Or run it manually on macOS or Linux:
 
 ```bash
 python3 generate_codex_data.py

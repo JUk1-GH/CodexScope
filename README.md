@@ -35,6 +35,7 @@ To view your real local Codex usage, use the launcher for your system:
 - **Windows**: double-click `windows/open-dashboard.cmd`
 
 The launcher generates `data.js` from your local Codex logs and then opens `index.html`.
+Subsequent runs reuse a local `.codexscope-cache.json` file and only rescan changed session logs, so repeated launches should be much faster.
 
 You can also run the same steps manually on macOS or Linux:
 
@@ -61,7 +62,7 @@ If your Codex sessions are stored elsewhere, pass the path explicitly:
 py .\generate_codex_data.py --root "$env:USERPROFILE\.codex\sessions"
 ```
 
-The generator writes `data.js` next to `index.html`. Once that file exists, the dashboard automatically uses your real local data instead of the bundled demo. `data.js` may contain private project names, session ids, timestamps, usage patterns, and quota status, so it is excluded by `.gitignore`.
+The generator writes `data.js` next to `index.html`. Once that file exists, the dashboard automatically uses your real local data instead of the bundled demo. `data.js` and `.codexscope-cache.json` may contain private project names, session ids, timestamps, usage patterns, and quota status, so both are excluded by `.gitignore`.
 
 ## What Gets Displayed
 

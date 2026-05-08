@@ -30,6 +30,7 @@ USAGE_KEYS = (
     "reasoning_output_tokens",
     "total_tokens",
 )
+CACHE_VERSION = 1
 
 
 def parse_time(value: str | None) -> datetime | None:
@@ -129,30 +130,56 @@ def safe_percent(value: Any) -> float | None:
     return None
 
 
-def load_sessions(root: Path, cutoff: datetime) -> tuple[list[SessionStats], list[dict[str, Any]], dict[str, Any] | None, list[dict[str, Any]], list[dict[str, Any]]]:
-    sessions: list[SessionStats] = []
-    events: list[dict[str, Any]] = []
-    ttfb_events: list[dict[str, Any]] = []
+def iso_time(value: datetime | None) -> str | None:
+    return value.isoformat() if value else None
+
+
+def load_cache(cache_path: Path | None, days: int) -> dict[str, Any]:
+    if not cache_path or not cache_path.exists():
+        return {}
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if payload.get("version") != CACHE_VERSION:
+        return {}
+    if int(payload.get("windowDays") or 0) < days:
+        return {}
+    return payload.get("files") if isinstance(payload.get("files"), dict) else {}
+
+
+def write_cache(cache_path: Path | None, days: int, files: dict[str, Any]) -> None:
+    if not cache_path:
+        return
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cache_path.with_name(f"{cache_path.name}.tmp")
+        tmp.write_text(
+            json.dumps({"version": CACHE_VERSION, "windowDays": days, "files": files}, ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        tmp.replace(cache_path)
+    except OSError:
+        return
+
+
+def parse_session_file(path: Path, cutoff: datetime) -> dict[str, Any]:
+    sid = path.stem
+    cwd: str | None = None
+    model = "unknown"
+    prev_total_usage: dict[str, int] | None = None
+    usage_events: list[dict[str, Any]] = []
+    completion_events: list[dict[str, Any]] = []
     failure_events: list[dict[str, Any]] = []
     latest_limits: dict[str, Any] | None = None
     latest_limits_ts: datetime | None = None
 
-    for path in sorted(root.rglob("*.jsonl")):
-      try:
-        if datetime.fromtimestamp(path.stat().st_mtime, timezone.utc) < cutoff - timedelta(days=1):
-            continue
-      except OSError:
-        continue
-
-      stat = SessionStats(sid=path.stem, file=str(path))
-      saw_recent = False
-
-      try:
+    try:
         lines = path.open(encoding="utf-8", errors="ignore")
-      except OSError:
-        continue
+    except OSError:
+        return {"sid": sid, "file": str(path), "model": model}
 
-      with lines:
+    with lines:
         for line in lines:
             try:
                 obj = json.loads(line)
@@ -164,27 +191,16 @@ def load_sessions(root: Path, cutoff: datetime) -> tuple[list[SessionStats], lis
             top_type = obj.get("type")
             payload_type = payload.get("type")
 
-            if ts and ts >= cutoff:
-                saw_recent = True
-                if not stat.started_at or ts < stat.started_at:
-                    stat.started_at = ts
-                if not stat.ended_at or ts > stat.ended_at:
-                    stat.ended_at = ts
-
             if top_type == "session_meta":
-                stat.sid = str(payload.get("id") or stat.sid)
-                stat.cwd = payload.get("cwd") or stat.cwd
-                meta_ts = parse_time(payload.get("timestamp"))
-                if meta_ts and meta_ts >= cutoff:
-                    stat.started_at = stat.started_at or meta_ts
-                    saw_recent = True
+                sid = str(payload.get("id") or sid)
+                cwd = payload.get("cwd") or cwd
                 continue
 
             if top_type == "turn_context":
                 if payload.get("model"):
-                    stat.model = str(payload.get("model"))
+                    model = str(payload.get("model"))
                 if payload.get("cwd"):
-                    stat.cwd = payload.get("cwd")
+                    cwd = payload.get("cwd")
                 continue
 
             if payload_type == "token_count":
@@ -196,42 +212,142 @@ def load_sessions(root: Path, cutoff: datetime) -> tuple[list[SessionStats], lis
                 info = payload.get("info") or {}
                 last_usage = usage_snapshot(info.get("last_token_usage"))
                 total_usage = usage_snapshot(info.get("total_token_usage"))
-                prev_total_usage = stat.prev_total_usage
+                prev_total = prev_total_usage
                 if total_usage:
-                    stat.prev_total_usage = total_usage
+                    prev_total_usage = total_usage
                 if ts and ts >= cutoff:
                     # token_count can repeat identical snapshots; count cumulative deltas, not every snapshot.
-                    usage = usage_delta(total_usage, prev_total_usage) if total_usage and prev_total_usage else last_usage
-                    if not usage:
-                        continue
-                    add_usage(stat.usage, usage)
-                    stat.calls += 1
-                    events.append({
-                        "ts": ts,
-                        "sid": stat.sid,
-                        "usage": usage,
-                        "model": stat.model,
-                    })
+                    usage = usage_delta(total_usage, prev_total) if total_usage and prev_total else last_usage
+                    if usage:
+                        usage_events.append({"ts": iso_time(ts), "sid": sid, "usage": usage, "model": model})
                 continue
 
             if payload_type == "task_complete" and ts and ts >= cutoff:
-                stat.completions += 1
+                event: dict[str, Any] = {"ts": iso_time(ts), "sid": sid, "model": model}
                 duration = payload.get("duration_ms")
                 if isinstance(duration, (int, float)) and math.isfinite(duration):
-                    stat.duration_ms += int(duration)
+                    event["duration_ms"] = int(duration)
                 ttfb = payload.get("time_to_first_token_ms")
                 if isinstance(ttfb, (int, float)) and math.isfinite(ttfb):
-                    stat.ttfb_ms += int(ttfb)
-                    stat.ttfb_count += 1
-                    ttfb_events.append({"ts": ts, "sid": stat.sid, "model": stat.model, "ttfb_ms": int(ttfb)})
+                    event["ttfb_ms"] = int(ttfb)
+                completion_events.append(event)
                 continue
 
             if payload_type in {"error", "turn_aborted"} and ts and ts >= cutoff:
-                stat.failures += 1
-                failure_events.append({"ts": ts, "sid": stat.sid, "model": stat.model})
+                failure_events.append({"ts": iso_time(ts), "sid": sid, "model": model})
 
-      if saw_recent and (stat.calls or stat.completions or stat.failures):
+    return {
+        "sid": sid,
+        "file": str(path),
+        "cwd": cwd,
+        "model": model,
+        "usageEvents": usage_events,
+        "completionEvents": completion_events,
+        "failureEvents": failure_events,
+        "latestLimits": latest_limits,
+        "latestLimitsTs": iso_time(latest_limits_ts),
+    }
+
+
+def merge_session_file(
+    parsed: dict[str, Any],
+    cutoff: datetime,
+    sessions: list[SessionStats],
+    events: list[dict[str, Any]],
+    ttfb_events: list[dict[str, Any]],
+    failure_events: list[dict[str, Any]],
+    latest_limits: dict[str, Any] | None,
+    latest_limits_ts: datetime | None,
+) -> tuple[dict[str, Any] | None, datetime | None]:
+    stat = SessionStats(
+        sid=str(parsed.get("sid") or Path(str(parsed.get("file") or "session")).stem),
+        file=str(parsed.get("file") or ""),
+        cwd=parsed.get("cwd"),
+        model=str(parsed.get("model") or "unknown"),
+    )
+
+    def mark_seen(ts: datetime) -> None:
+        if not stat.started_at or ts < stat.started_at:
+            stat.started_at = ts
+        if not stat.ended_at or ts > stat.ended_at:
+            stat.ended_at = ts
+
+    for event in parsed.get("usageEvents") or []:
+        ts = parse_time(event.get("ts"))
+        if not ts or ts < cutoff:
+            continue
+        usage = usage_snapshot(event.get("usage"))
+        if not usage:
+            continue
+        mark_seen(ts)
+        add_usage(stat.usage, usage)
+        stat.calls += 1
+        events.append({"ts": ts, "sid": event.get("sid") or stat.sid, "usage": usage, "model": event.get("model") or stat.model})
+
+    for event in parsed.get("completionEvents") or []:
+        ts = parse_time(event.get("ts"))
+        if not ts or ts < cutoff:
+            continue
+        mark_seen(ts)
+        stat.completions += 1
+        duration = event.get("duration_ms")
+        if isinstance(duration, (int, float)) and math.isfinite(duration):
+            stat.duration_ms += int(duration)
+        ttfb = event.get("ttfb_ms")
+        if isinstance(ttfb, (int, float)) and math.isfinite(ttfb):
+            stat.ttfb_ms += int(ttfb)
+            stat.ttfb_count += 1
+            ttfb_events.append({"ts": ts, "sid": event.get("sid") or stat.sid, "model": event.get("model") or stat.model, "ttfb_ms": int(ttfb)})
+
+    for event in parsed.get("failureEvents") or []:
+        ts = parse_time(event.get("ts"))
+        if not ts or ts < cutoff:
+            continue
+        mark_seen(ts)
+        stat.failures += 1
+        failure_events.append({"ts": ts, "sid": event.get("sid") or stat.sid, "model": event.get("model") or stat.model})
+
+    limits = parsed.get("latestLimits")
+    limits_ts = parse_time(parsed.get("latestLimitsTs"))
+    if isinstance(limits, dict) and (latest_limits_ts is None or (limits_ts and limits_ts >= latest_limits_ts)):
+        latest_limits = limits
+        latest_limits_ts = limits_ts or latest_limits_ts
+
+    if stat.calls or stat.completions or stat.failures:
         sessions.append(stat)
+
+    return latest_limits, latest_limits_ts
+
+
+def load_sessions(root: Path, cutoff: datetime, cache_path: Path | None = None, days: int = 30) -> tuple[list[SessionStats], list[dict[str, Any]], dict[str, Any] | None, list[dict[str, Any]], list[dict[str, Any]]]:
+    sessions: list[SessionStats] = []
+    events: list[dict[str, Any]] = []
+    ttfb_events: list[dict[str, Any]] = []
+    failure_events: list[dict[str, Any]] = []
+    latest_limits: dict[str, Any] | None = None
+    latest_limits_ts: datetime | None = None
+    cache_files = load_cache(cache_path, days)
+    next_cache_files: dict[str, Any] = {}
+
+    for path in sorted(root.rglob("*.jsonl")):
+        try:
+            file_stat = path.stat()
+            if datetime.fromtimestamp(file_stat.st_mtime, timezone.utc) < cutoff - timedelta(days=1):
+                continue
+        except OSError:
+            continue
+        cache_key = str(path)
+        cached = cache_files.get(cache_key) if isinstance(cache_files.get(cache_key), dict) else None
+        if cached and cached.get("mtimeNs") == file_stat.st_mtime_ns and cached.get("size") == file_stat.st_size:
+            parsed = cached.get("parsed") if isinstance(cached.get("parsed"), dict) else {}
+        else:
+            parsed = parse_session_file(path, cutoff)
+        next_cache_files[cache_key] = {"mtimeNs": file_stat.st_mtime_ns, "size": file_stat.st_size, "parsed": parsed}
+        latest_limits, latest_limits_ts = merge_session_file(
+            parsed, cutoff, sessions, events, ttfb_events, failure_events, latest_limits, latest_limits_ts
+        )
+
+    write_cache(cache_path, days, next_cache_files)
 
     return sessions, events, latest_limits, ttfb_events, failure_events
 
@@ -285,10 +401,10 @@ def peak_rate(events: list[dict[str, Any]]) -> tuple[int, datetime | None]:
     return peak_total, peak_ts
 
 
-def build_payload(root: Path, days: int, trend_minutes: int) -> dict[str, Any]:
+def build_payload(root: Path, days: int, trend_minutes: int, cache_path: Path | None = None) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=days)
-    sessions, events, limits, ttfb_events, failure_events = load_sessions(root, cutoff)
+    sessions, events, limits, ttfb_events, failure_events = load_sessions(root, cutoff, cache_path, days)
     events.sort(key=lambda event: event["ts"])
     ttfb_events.sort(key=lambda event: event["ts"])
     failure_events.sort(key=lambda event: event["ts"])
@@ -458,9 +574,12 @@ def main() -> None:
     parser.add_argument("--out", default=str(Path(__file__).with_name("data.js")))
     parser.add_argument("--days", type=int, default=30)
     parser.add_argument("--trend-minutes", type=int, default=300)
+    parser.add_argument("--cache", default=str(Path(__file__).with_name(".codexscope-cache.json")))
+    parser.add_argument("--no-cache", action="store_true")
     args = parser.parse_args()
 
-    payload = build_payload(Path(args.root).expanduser(), args.days, args.trend_minutes)
+    cache_path = None if args.no_cache else Path(args.cache).expanduser()
+    payload = build_payload(Path(args.root).expanduser(), args.days, args.trend_minutes, cache_path)
     out = Path(args.out)
     out.write_text(
         "window.CODEXSCOPE_DATA = "

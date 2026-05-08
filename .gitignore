@@ -10,6 +10,7 @@ __pycache__/
 # session ids, timestamps, quota status, and usage patterns.
 data.js
 !data.sample.js
+.codexscope-cache.json
 
 # Local visual audit artifacts.
 *.png

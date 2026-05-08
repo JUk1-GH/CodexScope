@@ -16,4 +16,5 @@ data.js
 *.webp
 *.jpg
 *.jpeg
-
+!assets/
+!assets/**

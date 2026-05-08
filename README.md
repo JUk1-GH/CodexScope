@@ -1,18 +1,25 @@
 # QuotaScope
 
-QuotaScope is a local-first dashboard for inspecting Codex usage from local session logs. It shows token trends, quota and risk status, session rankings, model rankings, request distribution, cache hit rate, and estimated cost.
+QuotaScope is a local-first dashboard for inspecting Codex usage from local session logs. It turns local Codex metadata into a clean desktop dashboard with token trends, quota and risk status, session rankings, model rankings, request distribution, cache hit rate, and estimated cost.
 
-The dashboard is a static HTML app. Your real usage export stays local in `data.js`, which is intentionally ignored by git.
+![QuotaScope dashboard](assets/dashboard-24h.png)
+
+The dashboard is a static HTML app: no backend, no account connection, and no hosted telemetry. Your real usage export stays local in `data.js`, which is intentionally ignored by git.
+
+## Why
+
+Codex usage is easiest to understand when quota, token volume, model mix, and session-level hotspots are visible in one place. QuotaScope is built for that narrow job: open a local page, generate a local export, and see where usage went without shipping prompts or project data to another service.
 
 ## Features
 
-- Cumulative token usage trend with absolute and logarithmic scales
-- Date filters: last 24 hours, today, last 7 days, last 30 days, custom range
-- Request and token distribution charts
-- Real Codex quota status from local `rate_limits` events when available
-- Session and model rankings
-- Estimated cost by model and token type, shown in USD by default with an optional CNY conversion
+- Cumulative token trend with absolute and logarithmic views
+- Date filters for last 24 hours, today, last 7 days, last 30 days, and custom ranges
+- Request and token distribution charts for spotting usage peaks
+- Codex quota and risk status from local `rate_limits` events when available
+- Session and model rankings with token totals and request counts
+- Estimated cost by model and token type, shown in USD by default with optional CNY conversion
 - Local-only data generation from `~/.codex/sessions`
+- Desktop-focused responsive layout with a lightweight static frontend
 
 ## Quick Start
 
@@ -44,6 +51,14 @@ py .\generate_codex_data.py --root "$env:USERPROFILE\.codex\sessions"
 ```
 
 The generator writes `data.js` next to `index.html`. That file may contain private project names, session ids, timestamps, usage patterns, and quota status, so it is excluded by `.gitignore`.
+
+## What Gets Displayed
+
+- **Token trend**: cumulative input, cached, output, and reasoning token usage over the selected range.
+- **Quota and risk**: remaining short-window and weekly quota when Codex local logs include rate-limit metadata.
+- **Distribution**: request count or token volume grouped by time bucket.
+- **Rankings**: busiest sessions and models for the selected period.
+- **Cost estimate**: a local estimate using token counts and the built-in model price table.
 
 ## Cost Estimates
 

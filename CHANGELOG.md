@@ -5,12 +5,20 @@
 - Switched generated exports to compact `recordsV2` rows and delta timestamps, with catalogs kept in the raw sidecar to reduce first-load `data.js` size.
 - Added precomputed dashboard views for common ranges so preset filters avoid rescanning raw records in the browser.
 - Exported model pricing rules from the generator so precomputed views and custom date ranges share one cost-estimation source.
+- Rendered the cost popover price table from exported pricing rules instead of maintaining a separate static HTML table.
 - Compact precomputed chart buckets to shrink first-load dashboard views without changing the UI.
 - Split raw event rows into `data.raw.js`, loaded only when custom date ranges need raw records.
 - Added a raw sidecar schema marker so hot-start freshness checks do not scan the full raw export.
-- Fixed custom `--raw-out` paths by writing a browser-relative sidecar path into `data.js`.
+- Fixed custom `--raw-out` paths by writing and validating the browser-relative sidecar path in `data.js`.
 - Refactored preset view generation to aggregate summaries, charts, peak rate, sessions, and model stats in a single token-event pass.
 - Date preset views now slice sorted runtime events by time range before aggregating, avoiding full-history scans for short ranges.
+- Removed duplicate legacy top-level summary, trend, session, model, risk, and coverage exports from the main payload.
+- Included failure-only and latency-only events when deriving available data bounds for generated exports.
+- Clamped success and failure rates so sparse error-only logs cannot show failure percentages above 100%.
+- Show missing quota data as waiting for `rate_limits` instead of rendering it like an exhausted 0% quota.
+- Improved distribution chart value and x-axis label responsiveness across narrow dashboard widths.
+- Kept distribution bar values accessible through titles and `aria-label`s while limiting visible labels to prevent clutter.
+- Expanded responsive verification to wait for async custom-range rendering and assert accessible distribution values.
 - Reused the already-loaded parsed cache during regeneration so runs with changed logs do not parse the large cache JSON twice.
 - Bumped cache output stamping to regenerate once after the data-shape upgrade while still reusing readable parsed log cache.
 - Slimmed release packages by removing bundled README docs from platform zips and stripping Go build ids.

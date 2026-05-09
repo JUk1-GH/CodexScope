@@ -31,8 +31,8 @@ Download the project and open `index.html` directly in a browser. It will show b
 
 To view your real local Codex usage, normal users should download the platform package from GitHub Releases:
 
-- **macOS**: download `CodexScope-mac.zip`, unzip it, then double-click `open-dashboard.command` in the extracted folder
-- **Windows**: download `CodexScope-windows.zip`, unzip it, then double-click `open-dashboard.cmd` in the extracted folder
+- **macOS**: download `CodexScope-mac.zip`, unzip it, then double-click `Open CodexScope.command` in the extracted folder
+- **Windows**: download `CodexScope-windows.zip`, unzip it, then double-click `Open CodexScope.cmd` in the extracted folder
 
 Release zips include a prebuilt generator, so normal users do not need to install Go. The launcher generates `data.js` from your local Codex logs and then opens `index.html`. Source checkouts can still fall back to `go build` when the prebuilt generator is absent.
 Subsequent runs reuse a local `.codexscope-cache.json` file and only rescan changed session logs, so repeated launches should be much faster.
@@ -131,8 +131,8 @@ npm run release:local
 
 This writes:
 
-- `dist/CodexScope-mac.zip` with root-level `open-dashboard.command` and prebuilt `codexscope-darwin-arm64`
-- `dist/CodexScope-windows.zip` with root-level `open-dashboard.cmd` and prebuilt `codexscope-windows-amd64.exe`
+- `dist/CodexScope-mac.zip` with a root-level launcher and instructions, with the rest tucked under `CodexScope Files/`
+- `dist/CodexScope-windows.zip` with a root-level launcher and instructions, with the rest tucked under `CodexScope Files/`
 
 The GitHub Actions release workflow builds the same zip files for tags named `v*`.
 

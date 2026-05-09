@@ -2,11 +2,28 @@
 setlocal
 
 cd /d "%~dp0"
-if not exist "%cd%\index.html" cd /d "%~dp0.."
+set "DASHBOARD_DIR=%cd%"
+set "GENERATOR=%cd%\codexscope-windows-amd64.exe"
+set "DATA_PATH=%cd%\data.js"
+set "CACHE_PATH=%cd%\.codexscope-cache.json"
 
-if exist "%cd%\codexscope-windows-amd64.exe" (
+if exist "%cd%\CodexScope Files\app\index.html" (
+  set "DASHBOARD_DIR=%cd%\CodexScope Files\app"
+  set "GENERATOR=%cd%\CodexScope Files\bin\codexscope-windows-amd64.exe"
+  set "DATA_PATH=%cd%\CodexScope Files\app\data.js"
+  set "CACHE_PATH=%cd%\CodexScope Files\app\.codexscope-cache.json"
+) else if exist "%cd%\app\index.html" (
+  set "DASHBOARD_DIR=%cd%\app"
+  set "GENERATOR=%cd%\bin\codexscope-windows-amd64.exe"
+  set "DATA_PATH=%cd%\app\data.js"
+  set "CACHE_PATH=%cd%\app\.codexscope-cache.json"
+) else (
+  if not exist "%cd%\index.html" cd /d "%~dp0.."
+)
+
+if exist "%GENERATOR%" (
   if not exist "%cd%\generate_codex_data.go" (
-    "%cd%\codexscope-windows-amd64.exe"
+    "%GENERATOR%" --out "%DATA_PATH%" --cache "%CACHE_PATH%"
     goto open_dashboard
   )
 )
@@ -15,7 +32,7 @@ where go >nul 2>nul
 if %errorlevel%==0 (
   go build -trimpath -ldflags "-s -w" -o codexscope-generator.exe generate_codex_data.go
   if errorlevel 1 goto generator_failed
-  "%cd%\codexscope-generator.exe"
+  "%cd%\codexscope-generator.exe" --out "%DATA_PATH%" --cache "%CACHE_PATH%"
   goto open_dashboard
 )
 
@@ -26,7 +43,7 @@ exit /b 1
 
 :open_dashboard
 if errorlevel 1 goto generator_failed
-start "" "%cd%\index.html"
+start "" "%DASHBOARD_DIR%\index.html"
 exit /b 0
 
 :generator_failed

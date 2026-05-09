@@ -5,65 +5,73 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
 MAC_DIR="$DIST_DIR/CodexScope-mac"
 WIN_DIR="$DIST_DIR/CodexScope-windows"
+MAC_FILES_DIR="$MAC_DIR/CodexScope Files"
+WIN_FILES_DIR="$WIN_DIR/CodexScope Files"
 
 cd "$ROOT_DIR"
 
 npm run build:frontend
 
 rm -rf "$DIST_DIR"
-mkdir -p "$MAC_DIR" "$WIN_DIR"
+mkdir -p "$MAC_FILES_DIR/app" "$MAC_FILES_DIR/bin" "$MAC_FILES_DIR/docs" "$WIN_FILES_DIR/app" "$WIN_FILES_DIR/bin" "$WIN_FILES_DIR/docs"
 
-common_files=(
+app_files=(
   "index.html"
   "styles.css"
   "app.js"
   "data.sample.js"
-  "README.md"
-  "README.zh-CN.md"
-  "LICENSE"
 )
 
-for file in "${common_files[@]}"; do
-  cp "$file" "$MAC_DIR/$file"
-  cp "$file" "$WIN_DIR/$file"
+for file in "${app_files[@]}"; do
+  cp "$file" "$MAC_FILES_DIR/app/$file"
+  cp "$file" "$WIN_FILES_DIR/app/$file"
 done
 
-printf 'window.CODEXSCOPE_DATA = window.CODEXSCOPE_DATA || null;\n' > "$MAC_DIR/data.js"
-printf 'window.CODEXSCOPE_DATA = window.CODEXSCOPE_DATA || null;\n' > "$WIN_DIR/data.js"
+for file in "README.md" "README.zh-CN.md" "LICENSE"; do
+  cp "$file" "$MAC_FILES_DIR/docs/$file"
+  cp "$file" "$WIN_FILES_DIR/docs/$file"
+done
 
-cp "macos/open-dashboard.command" "$MAC_DIR/open-dashboard.command"
-cp "windows/open-dashboard.cmd" "$WIN_DIR/open-dashboard.cmd"
+printf 'window.CODEXSCOPE_DATA = window.CODEXSCOPE_DATA || null;\n' > "$MAC_FILES_DIR/app/data.js"
+printf 'window.CODEXSCOPE_DATA = window.CODEXSCOPE_DATA || null;\n' > "$WIN_FILES_DIR/app/data.js"
+
+cp "macos/open-dashboard.command" "$MAC_DIR/Open CodexScope.command"
+cp "windows/open-dashboard.cmd" "$WIN_DIR/Open CodexScope.cmd"
 
 cat > "$MAC_DIR/START-HERE.txt" <<'TXT'
 CodexScope macOS 用户先看
 
-1. 双击 open-dashboard.command。
+1. 双击 Open CodexScope.command。
 2. 如果 macOS 拦截，打开 系统设置 > 隐私与安全性，点击 仍要打开。
-3. 这个包已经内置编译好的 codexscope-darwin-arm64，不需要安装 Go。
+3. CodexScope Files 文件夹不用点，程序会自动使用里面的文件。
+4. 这个包已经内置编译好的程序，不需要安装 Go。
 
 如果你下载的是 GitHub 自动生成的 Source code (zip)，那是给开发者看的源码包，不是普通用户推荐下载。
 
-1. Double-click open-dashboard.command.
+1. Double-click Open CodexScope.command.
 2. If macOS blocks it, open System Settings > Privacy & Security, then click Open Anyway.
-3. This package already includes the compiled codexscope-darwin-arm64 generator. You do not need Go.
+3. You do not need to open CodexScope Files manually.
+4. This package already includes the compiled generator. You do not need Go.
 TXT
 
 cat > "$WIN_DIR/START-HERE.txt" <<'TXT'
 CodexScope Windows 用户先看
 
-1. 双击 open-dashboard.cmd。
-2. 这个包已经内置编译好的 codexscope-windows-amd64.exe，不需要安装 Go。
+1. 双击 Open CodexScope.cmd。
+2. CodexScope Files 文件夹不用点，程序会自动使用里面的文件。
+3. 这个包已经内置编译好的程序，不需要安装 Go。
 
 如果你下载的是 GitHub 自动生成的 Source code (zip)，那是给开发者看的源码包，不是普通用户推荐下载。
 
-1. Double-click open-dashboard.cmd.
-2. This package already includes the compiled codexscope-windows-amd64.exe generator. You do not need Go.
+1. Double-click Open CodexScope.cmd.
+2. You do not need to open CodexScope Files manually.
+3. This package already includes the compiled generator. You do not need Go.
 TXT
 
-GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o "$MAC_DIR/codexscope-darwin-arm64" generate_codex_data.go
-GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "$WIN_DIR/codexscope-windows-amd64.exe" generate_codex_data.go
+GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o "$MAC_FILES_DIR/bin/codexscope-darwin-arm64" generate_codex_data.go
+GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "$WIN_FILES_DIR/bin/codexscope-windows-amd64.exe" generate_codex_data.go
 
-chmod +x "$MAC_DIR/open-dashboard.command" "$MAC_DIR/codexscope-darwin-arm64"
+chmod +x "$MAC_DIR/Open CodexScope.command" "$MAC_FILES_DIR/bin/codexscope-darwin-arm64"
 
 (
   cd "$DIST_DIR"

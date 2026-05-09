@@ -2019,6 +2019,14 @@ main {
   white-space: nowrap;
 }
 
+.dist-x-label:first-child {
+  text-align: left;
+}
+
+.dist-x-label:last-child {
+  text-align: right;
+}
+
 .list-empty {
   color: #6c7f98;
   font-size: 13px;
@@ -2036,6 +2044,7 @@ main {
 
 .dist-bar-value {
   min-width: 0;
+  min-height: 11px;
   color: #172b49;
   font-size: 11px;
   font-weight: 780;
@@ -2044,6 +2053,18 @@ main {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: visible;
+}
+
+.dist-bar-value.is-hidden {
+  visibility: hidden;
+}
+
+.dist-bar:first-child .dist-bar-value {
+  text-align: left;
+}
+
+.dist-bar:last-child .dist-bar-value {
+  text-align: right;
 }
 
 .dist-bar-fill {
@@ -2130,7 +2151,7 @@ main {
   }
 
   #distributionPanel .dist-bar-value {
-    font-size: 8px;
+    font-size: 10px;
   }
 
   #distributionPanel .dist-bar-label {
@@ -2227,7 +2248,7 @@ main {
   }
 
   #distributionPanel .dist-bar-value {
-    font-size: 7px;
+    font-size: 10px;
   }
 
   .lower {
@@ -3434,7 +3455,7 @@ main {
   }
 
   .dist-bar-value {
-    font-size: 8px;
+    font-size: 10px;
   }
 
   .dist-bar-label {

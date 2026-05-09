@@ -821,20 +821,55 @@ interface Window {
     chart.style.setProperty("--bar-count", String(Math.max(1, rows.length)));
     const axisMax = niceMax(maxValue);
     const yLabel = tokenMode ? tinyToken : compact;
-    const bars = rows.map((row) => {
+    const plotWidth = Math.max(180, (chart.clientWidth || 520) - 54);
+    const slotWidth = plotWidth / Math.max(1, rows.length);
+    const showAllValueLabels = rows.length <= 10 || slotWidth >= 46;
+    const valueLabelIndices = new Set<number>();
+
+    if (showAllValueLabels) {
+      rows.forEach((_, index) => valueLabelIndices.add(index));
+    } else {
+      const maxVisibleLabels = Math.max(3, Math.min(rows.length, Math.floor(plotWidth / (slotWidth >= 30 ? 52 : 64))));
+      const minLabelGap = slotWidth >= 34 ? 1 : slotWidth >= 24 ? 2 : 3;
+      const placeLabel = (index) => {
+        if (valueLabelIndices.size >= maxVisibleLabels) return;
+        for (const placed of valueLabelIndices) {
+          if (Math.abs(placed - index) < minLabelGap) return;
+        }
+        valueLabelIndices.add(index);
+      };
+      const valueCutoff = Math.max(1, maxValue * 0.12);
+      rows
+        .map((row, index) => ({ index, value: row[metricKey] || 0 }))
+        .filter((row) => row.value >= valueCutoff)
+        .sort((a, b) => b.value - a.value)
+        .forEach((row) => placeLabel(row.index));
+      if (slotWidth >= 34) {
+        [0, rows.length - 1].forEach((index) => {
+          if ((rows[index]?.[metricKey] || 0) > 0) placeLabel(index);
+        });
+      }
+    }
+
+    const bars = rows.map((row, index) => {
       const value = row[metricKey] || 0;
       const label = tokenMode ? tinyToken(value) : String(value);
       const detailLabel = tokenMode ? fmt(value) : String(value);
       const height = value ? Math.max(3, Math.round(value / axisMax * 100)) : 0;
+      const showValue = valueLabelIndices.has(index);
       return `
       <div class="dist-bar" title="${esc(row.label)} · ${esc(detailLabel)} ${unitLabel}" aria-label="${esc(row.label)} ${esc(detailLabel)} ${unitLabel}">
-        <span class="dist-bar-value">${esc(label)}</span>
+        <span class="dist-bar-value${showValue ? "" : " is-hidden"}">${showValue ? esc(label) : ""}</span>
         <span class="dist-bar-fill ${tokenMode ? "token" : ""}" style="height:${height}%"></span>
         <span class="dist-bar-label">${esc(row.label)}</span>
       </div>`;
     }).join("");
+    const xLabelStride = rows.length <= 8 ? 1 : rows.length <= 14 ? 2 : 3;
+    const xLabelMinGap = slotWidth < 24 ? 2 : 1;
     const xLabels = rows.map((row, index) => {
-      const showLabel = rows.length <= 8 || index === 0 || index === rows.length - 1 || index % 3 === 0;
+      const isEdge = index === 0 || index === rows.length - 1;
+      const clearsLastLabel = index <= rows.length - 1 - xLabelMinGap;
+      const showLabel = isEdge || (index % xLabelStride === 0 && clearsLastLabel);
       return `<span class="dist-x-label">${showLabel ? esc(row.label) : ""}</span>`;
     }).join("");
     chart.innerHTML = `

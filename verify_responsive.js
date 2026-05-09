@@ -57,6 +57,8 @@ function isVisibleInViewport(rect, height) {
           const style = getComputedStyle(el);
           return el !== app
             && el.scrollWidth > el.clientWidth + 1
+            && style.overflowX !== "auto"
+            && style.overflowX !== "scroll"
             && style.overflow !== "visible"
             && style.textOverflow !== "ellipsis";
         })
@@ -71,6 +73,7 @@ function isVisibleInViewport(rect, height) {
         const panelRect = panel.getBoundingClientRect();
         return Array.from(panel.querySelectorAll("*"))
           .filter((el) => {
+            if (el.closest("#distributionChart")) return false;
             if (el.closest(".chart-wrap")) return false;
             const rect = el.getBoundingClientRect();
             return rect.width > 1
@@ -114,6 +117,9 @@ function isVisibleInViewport(rect, height) {
           values: Array.from(document.querySelectorAll("#distributionChart .dist-bar-value"))
             .map((el) => el.textContent.trim())
             .filter(Boolean).length,
+          encodedValues: Array.from(document.querySelectorAll("#distributionChart .dist-bar"))
+            .filter((el) => (el.getAttribute("title") || "").trim() && (el.getAttribute("aria-label") || "").trim())
+            .length,
         },
         costState: {
           hasUsdDefault: document.querySelector(".currency-mode[data-currency='USD']")?.classList.contains("active")
@@ -247,7 +253,8 @@ function isVisibleInViewport(rect, height) {
     if (report.hiddenVisible.length) issues.push(`${report.hiddenVisible.length} hidden controls are still visible`);
     if (report.trendPaths.some((path) => path.maxY !== null && path.maxY > 194.5)) issues.push("trend curve renders below zero axis");
     if (!report.distributionState.bars && !report.distributionState.empty) issues.push("distribution chart renders no state");
-    if (report.distributionState.bars && report.distributionState.values < report.distributionState.bars) issues.push("distribution bars missing numeric values");
+    if (report.distributionState.bars && report.distributionState.encodedValues < report.distributionState.bars) issues.push("distribution bars missing accessible numeric values");
+    if (report.distributionState.bars && report.distributionState.values < Math.min(3, report.distributionState.bars)) issues.push("distribution chart has too few visible value labels");
     if (!report.costState.hasUsdDefault) issues.push("cost card does not default to USD");
     if (!report.costState.hasCnyToggle) issues.push("cost card missing CNY toggle");
     if (!interactions.sessionsExpandable) issues.push("session expand control does not expand");

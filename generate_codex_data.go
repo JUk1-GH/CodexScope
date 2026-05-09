@@ -367,6 +367,23 @@ func percentValue(value *float64) float64 {
 	return *value
 }
 
+func cutoffForDays(days int, now time.Time) time.Time {
+	if days <= 0 {
+		return time.Time{}
+	}
+	return now.Add(-time.Duration(days) * 24 * time.Hour)
+}
+
+func cacheCoversDays(cachedDays int, requestedDays int) bool {
+	if requestedDays <= 0 {
+		return cachedDays <= 0
+	}
+	if cachedDays <= 0 {
+		return true
+	}
+	return cachedDays >= requestedDays
+}
+
 func loadCache(cachePath string, days int) map[string]FileCache {
 	// A cache generated for a shorter window cannot safely answer a longer one
 	// because older files may have been skipped. Older readable cache versions
@@ -382,7 +399,7 @@ func loadCache(cachePath string, days int) map[string]FileCache {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return map[string]FileCache{}
 	}
-	if payload.Version < minReadableCacheVersion || payload.Version > cacheVersion || payload.WindowDays < days || payload.Files == nil {
+	if payload.Version < minReadableCacheVersion || payload.Version > cacheVersion || !cacheCoversDays(payload.WindowDays, days) || payload.Files == nil {
 		return map[string]FileCache{}
 	}
 	return payload.Files
@@ -938,7 +955,7 @@ func buildPayload(root string, days int, trendMinutes int, cachePath string) map
 	// are smaller to load than repeated object keys; catalogs retain labels for
 	// display without duplicating them in every event record.
 	now := time.Now().UTC()
-	cutoff := now.Add(-time.Duration(days) * 24 * time.Hour)
+	cutoff := cutoffForDays(days, now)
 	loaded := loadSessions(root, cutoff, cachePath, days)
 
 	sort.SliceStable(loaded.Events, func(i, j int) bool { return loaded.Events[i].Ts.Before(loaded.Events[j].Ts) })
@@ -1097,7 +1114,10 @@ func buildPayload(root string, days int, trendMinutes int, cachePath string) map
 		failureRecords = append(failureRecords, []any{event.Ts.UnixMilli(), event.Sid, nonEmpty(event.Model, "unknown")})
 	}
 
-	availableStart := cutoff.UnixMilli()
+	availableStart := now.UnixMilli()
+	if !cutoff.IsZero() {
+		availableStart = cutoff.UnixMilli()
+	}
 	availableEnd := now.UnixMilli()
 	if len(records) > 0 {
 		availableStart = records[0][0].(int64)
@@ -1265,7 +1285,7 @@ func main() {
 	defaultRoot := filepath.Join(home, ".codex", "sessions")
 	root := flag.String("root", defaultRoot, "Codex sessions directory")
 	out := flag.String("out", "data.js", "output data.js path")
-	days := flag.Int("days", 30, "number of days to include")
+	days := flag.Int("days", 0, "number of days to include; 0 means all history")
 	trendMinutes := flag.Int("trend-minutes", 300, "minutes in the summary trend")
 	cache := flag.String("cache", ".codexscope-cache.json", "local cache path")
 	noCache := flag.Bool("no-cache", false, "disable local cache")
@@ -1279,7 +1299,7 @@ func main() {
 	stampSignature := ""
 	if cachePath != "" {
 		now := time.Now().UTC()
-		cutoff := now.Add(-time.Duration(*days) * 24 * time.Hour)
+		cutoff := cutoffForDays(*days, now)
 		files := collectSessionFiles(*root, cutoff)
 		stampSignature = fileSignature(*root, *out, *days, *trendMinutes, files)
 		if outputIsStampedFresh(*out, files, stampPath, stampSignature) {

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.6 - 2026-05-09
+
+- Added a `历史` date filter for all exported local records.
+- Changed the generator default to export all local history instead of only the last 30 days.
+- Kept `--days N` available for users who want a bounded export window.
+- Added tests for all-history cutoff and cache-window behavior.
+
 ## v0.1.5 - 2026-05-09
 
 - Fixed quota selection when Codex logs contain both global Codex limits and model-specific limits.

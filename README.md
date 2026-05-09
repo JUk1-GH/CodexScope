@@ -17,7 +17,7 @@ Codex usage is easiest to understand when quota, token volume, model mix, and se
 ## Features
 
 - Cumulative token trend with absolute and logarithmic views
-- Date filters for last 24 hours, today, last 7 days, last 30 days, and custom ranges
+- Date filters for last 24 hours, today, last 7 days, last 30 days, all history, and custom ranges
 - Request and token distribution charts for spotting usage peaks
 - Codex quota and risk status from local `rate_limits` events when available
 - Session and model rankings with token totals and request counts
@@ -93,7 +93,7 @@ The generator writes `data.js` next to `index.html`. Once that file exists, the 
 ## Data Flow
 
 1. Codex writes local JSONL session logs under `~/.codex/sessions`.
-2. `generate_codex_data.go` scans recent `.jsonl` files and extracts only usage metadata: token counts, model names, session ids, timing, failures, and rate-limit metadata.
+2. `generate_codex_data.go` scans local `.jsonl` files and extracts only usage metadata: token counts, model names, session ids, timing, failures, and rate-limit metadata.
 3. The generator writes those records to `data.js` as `window.CODEXSCOPE_DATA`.
 4. `index.html` loads `data.sample.js` first and then `data.js`. If real local data exists, it overrides the sample data.
 5. Date filters, charts, rankings, quota status, and cost estimates are computed in the browser from that local record set.

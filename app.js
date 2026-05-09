@@ -59,6 +59,8 @@
     };
     const EXCHANGE_RATE_URL = "https://api.frankfurter.dev/v2/rate/USD/CNY?providers=ECB";
     const latestDataTime = Math.max(Number((data.availableRange || {}).end) || 0, recordTime(records[records.length - 1])) || Date.now();
+    const earliestDataTime = Math.min(Number((data.availableRange || {}).start) || Infinity, recordTime(records[0]) || Infinity, recordTime(ttfbRecords[0]) || Infinity, recordTime(failureRecords[0]) || Infinity);
+    const firstDataTime = Number.isFinite(earliestDataTime) ? earliestDataTime : latestDataTime;
     const rangeNow = () => Math.min(Date.now(), latestDataTime);
     const lowerBound = (rows, ts) => {
         let lo = 0;
@@ -122,6 +124,8 @@
             return "7天内";
         if (preset === "30")
             return "30天内";
+        if (preset === "history")
+            return "历史总览";
         return `${ymd(new Date(start))} 至 ${ymd(new Date(end - 1))}`;
     };
     const fmt = (value) => {
@@ -248,6 +252,8 @@
             return { start: today - 6 * DAY, end: now, preset, label: "7天内" };
         if (preset === "30")
             return { start: today - 29 * DAY, end: now, preset, label: "30天内" };
+        if (preset === "history")
+            return { start: Math.min(firstDataTime, now), end: now, preset, label: "历史总览" };
         const startInput = parseYmdStart($("startDate")?.value) ?? today;
         const endInput = parseYmdStart($("endDate")?.value) ?? today;
         const start = Math.min(startInput, endInput);
@@ -961,8 +967,8 @@
         applyStats(computeStats(rangeForPreset(preset)));
         renderAll();
     };
-    const availableStart = new Date((data.availableRange || {}).start || Date.now() - 29 * DAY);
-    const availableEnd = new Date((data.availableRange || {}).end || Date.now());
+    const availableStart = new Date(firstDataTime || Date.now() - 29 * DAY);
+    const availableEnd = new Date(latestDataTime || Date.now());
     const startDateInput = $("startDate");
     const endDateInput = $("endDate");
     if (startDateInput && endDateInput) {

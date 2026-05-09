@@ -1,13 +1,13 @@
 {
   "name": "codexscope",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "A local-first Codex usage and quota dashboard.",
   "private": false,
   "type": "commonjs",
   "scripts": {
     "build:frontend": "tsc -p tsconfig.json",
     "generate": "go run generate_codex_data.go",
-    "build:generator": "go build -trimpath -ldflags \"-s -w\" -o codexscope-generator generate_codex_data.go",
+    "build:generator": "go build -trimpath -ldflags \"-s -w -buildid=\" -o codexscope-generator generate_codex_data.go",
     "build": "npm run build:frontend && npm run build:generator",
     "release:local": "bash scripts/build-release.sh",
     "verify": "npm run build:frontend && node verify_responsive.js"

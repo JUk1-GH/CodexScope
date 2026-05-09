@@ -2,6 +2,15 @@ window.CODEXSCOPE_SAMPLE_DATA = {
   sample: true,
   generatedAt: "2026-05-09 00:16:00",
   windowDays: 30,
+  pricingRules: [
+    { label: "gpt-5.5", patterns: ["gpt-5.5"], input: 5.00, cached: 0.50, output: 30.00 },
+    { label: "gpt-5.4 mini", patterns: ["gpt-5.4-mini", "gpt_5.4_mini", "gpt 5.4 mini"], input: 0.75, cached: 0.075, output: 4.50 },
+    { label: "gpt-5.4", patterns: ["gpt-5.4"], input: 2.50, cached: 0.25, output: 15.00 },
+    { label: "gpt-5.3 codex spark", patterns: ["gpt-5.3-codex-spark", "gpt_5.3_codex_spark", "gpt 5.3 codex spark"], input: 1.75, cached: 0.175, output: 14.00 },
+    { label: "gpt-5.3 codex", patterns: ["gpt-5.3-codex", "gpt_5.3_codex", "gpt 5.3 codex"], input: 1.75, cached: 0.175, output: 14.00 },
+    { label: "gpt-5.2 codex", patterns: ["gpt-5.2-codex", "gpt_5.2_codex", "gpt 5.2 codex"], input: 1.75, cached: 0.175, output: 14.00 },
+    { label: "gpt-5 / 5.1 codex", patterns: ["gpt-5.1-codex", "gpt_5.1_codex", "gpt 5.1 codex", "gpt-5-codex", "gpt_5_codex", "gpt 5 codex", "gpt-5"], input: 1.25, cached: 0.125, output: 10.00 }
+  ],
   availableRange: {
     start: 1778170560000,
     end: 1778256960000

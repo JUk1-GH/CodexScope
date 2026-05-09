@@ -13,7 +13,7 @@ cd "$ROOT_DIR"
 npm run build:frontend
 
 rm -rf "$DIST_DIR"
-mkdir -p "$MAC_FILES_DIR/app" "$MAC_FILES_DIR/bin" "$MAC_FILES_DIR/docs" "$WIN_FILES_DIR/app" "$WIN_FILES_DIR/bin" "$WIN_FILES_DIR/docs"
+mkdir -p "$MAC_FILES_DIR/app" "$MAC_FILES_DIR/bin" "$WIN_FILES_DIR/app" "$WIN_FILES_DIR/bin"
 
 app_files=(
   "index.html"
@@ -27,13 +27,13 @@ for file in "${app_files[@]}"; do
   cp "$file" "$WIN_FILES_DIR/app/$file"
 done
 
-for file in "README.md" "README.zh-CN.md" "LICENSE"; do
-  cp "$file" "$MAC_FILES_DIR/docs/$file"
-  cp "$file" "$WIN_FILES_DIR/docs/$file"
-done
+cp "LICENSE" "$MAC_FILES_DIR/LICENSE"
+cp "LICENSE" "$WIN_FILES_DIR/LICENSE"
 
 printf 'window.CODEXSCOPE_DATA = window.CODEXSCOPE_DATA || null;\n' > "$MAC_FILES_DIR/app/data.js"
 printf 'window.CODEXSCOPE_DATA = window.CODEXSCOPE_DATA || null;\n' > "$WIN_FILES_DIR/app/data.js"
+printf 'window.CODEXSCOPE_RAW_DATA = window.CODEXSCOPE_RAW_DATA || null;\n' > "$MAC_FILES_DIR/app/data.raw.js"
+printf 'window.CODEXSCOPE_RAW_DATA = window.CODEXSCOPE_RAW_DATA || null;\n' > "$WIN_FILES_DIR/app/data.raw.js"
 
 cp "macos/open-dashboard.command" "$MAC_DIR/Open CodexScope.command"
 cp "windows/open-dashboard.cmd" "$WIN_DIR/Open CodexScope.cmd"
@@ -68,8 +68,8 @@ CodexScope Windows 用户先看
 3. This package already includes the compiled generator. You do not need Go.
 TXT
 
-GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o "$MAC_FILES_DIR/bin/codexscope-darwin-arm64" generate_codex_data.go
-GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "$WIN_FILES_DIR/bin/codexscope-windows-amd64.exe" generate_codex_data.go
+GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w -buildid=" -o "$MAC_FILES_DIR/bin/codexscope-darwin-arm64" generate_codex_data.go
+GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w -buildid=" -o "$WIN_FILES_DIR/bin/codexscope-windows-amd64.exe" generate_codex_data.go
 
 chmod +x "$MAC_DIR/Open CodexScope.command" "$MAC_FILES_DIR/bin/codexscope-darwin-arm64"
 

@@ -8,7 +8,7 @@ CodexScope is a local-first dashboard for inspecting Codex usage from local sess
 
 ![CodexScope dashboard](assets/codexscope-dashboard-24h.png)
 
-The dashboard is a static HTML app: no backend, no account connection, and no hosted telemetry. Your real usage export stays local in `data.js`, which is intentionally ignored by git.
+The dashboard is a static HTML app: no backend, no account connection, and no hosted telemetry. Your real usage export stays local in `data.js` and `data.raw.js`, which are intentionally ignored by git. Recent exports keep precomputed dashboard views in `data.js`; compact catalogs and raw rows are loaded from `data.raw.js` only for custom date ranges.
 
 ## Why
 
@@ -34,8 +34,8 @@ To view your real local Codex usage, normal users should download the platform p
 - **macOS**: download `CodexScope-mac.zip`, unzip it, then double-click `Open CodexScope.command` in the extracted folder
 - **Windows**: download `CodexScope-windows.zip`, unzip it, then double-click `Open CodexScope.cmd` in the extracted folder
 
-Release zips include a prebuilt generator, so normal users do not need to install Go. The launcher generates `data.js` from your local Codex logs and then opens `index.html`. Source checkouts can still fall back to `go build` when the prebuilt generator is absent.
-Subsequent runs reuse a local `.codexscope-cache.json` file and only rescan changed session logs, so repeated launches should be much faster.
+Release zips include a prebuilt generator, so normal users do not need to install Go. The launcher generates `data.js` and `data.raw.js` from your local Codex logs and then opens `index.html`. Source checkouts can still fall back to `go build` when the prebuilt generator is absent.
+Subsequent runs reuse a local `.codexscope-cache.json` file and only rescan changed session logs. If nothing changed, the generator can skip rewriting the export files; if a log grew, it appends from the previous cached offset.
 
 Note: GitHub's automatic **Source code (zip)** asset is for developers, not the recommended user download. It may require Go or local compilation. Prefer `CodexScope-mac.zip` / `CodexScope-windows.zip`.
 
@@ -73,7 +73,7 @@ If your Codex sessions are stored elsewhere, pass the path explicitly:
 go run .\generate_codex_data.go --root "$env:USERPROFILE\.codex\sessions"
 ```
 
-The generator writes `data.js` next to `index.html`. Once that file exists, the dashboard automatically uses your real local data instead of the bundled demo. `data.js` and `.codexscope-cache.json` may contain private project names, session ids, timestamps, usage patterns, and quota status, so both are excluded by `.gitignore`.
+The generator writes `data.js` and `data.raw.js` next to `index.html`. Once those files exist, the dashboard automatically uses your real local data instead of the bundled demo. `data.js`, `data.raw.js`, and `.codexscope-cache.json` may contain private project names, session ids, timestamps, usage patterns, and quota status, so they are excluded by `.gitignore`.
 
 ## Project Structure
 
@@ -81,7 +81,7 @@ The generator writes `data.js` next to `index.html`. Once that file exists, the 
 - `styles.css`: dashboard layout and visual styling.
 - `app.ts`: TypeScript source for charts, filters, rankings, quota display, and cost estimation.
 - `app.js`: compiled browser script loaded by `index.html`.
-- `generate_codex_data.go`: the local data generator. It scans Codex JSONL session logs, extracts usage metadata, and writes `data.js`.
+- `generate_codex_data.go`: the local data generator. It scans Codex JSONL session logs, extracts usage metadata, and writes `data.js` plus `data.raw.js`.
 - `data.sample.js`: bundled demo data used when no local `data.js` exists.
 - `CHANGELOG.md`: release notes for each published version.
 - `macos/open-dashboard.command`: macOS launcher that runs the generator and opens the dashboard.
@@ -94,8 +94,8 @@ The generator writes `data.js` next to `index.html`. Once that file exists, the 
 
 1. Codex writes local JSONL session logs under `~/.codex/sessions`.
 2. `generate_codex_data.go` scans local `.jsonl` files and extracts only usage metadata: token counts, model names, session ids, timing, failures, and rate-limit metadata.
-3. The generator writes those records to `data.js` as `window.CODEXSCOPE_DATA`.
-4. `index.html` loads `data.sample.js` first and then `data.js`. If real local data exists, it overrides the sample data.
+3. The generator writes precomputed range views to `data.js` as `window.CODEXSCOPE_DATA`, and compact catalogs plus raw event rows to `data.raw.js` as `window.CODEXSCOPE_RAW_DATA`.
+4. `index.html` loads `data.sample.js` first and then `data.js`. If real local data exists, it overrides the sample data; `data.raw.js` is loaded only when custom date ranges need raw rows.
 5. Date filters, charts, rankings, quota status, and cost estimates are computed in the browser from that local record set.
 
 ## What Gets Displayed
@@ -104,11 +104,11 @@ The generator writes `data.js` next to `index.html`. Once that file exists, the 
 - **Quota and risk**: remaining short-window and weekly quota when Codex local logs include rate-limit metadata.
 - **Distribution**: request count or token volume grouped by time bucket.
 - **Rankings**: busiest sessions and models for the selected period.
-- **Cost estimate**: a local estimate using token counts and the built-in model price table.
+- **Cost estimate**: a local estimate using token counts and model pricing rules exported by the generator.
 
 ## Cost Estimates
 
-The cost card is an estimate, not an official bill. It uses local token counts and a built-in table based on OpenAI's published USD model prices. Actual ChatGPT/Codex billing, credits, and subscription quota status should always be checked with the official account or billing page.
+The cost card is an estimate, not an official bill. It uses local token counts and generator-exported rules based on OpenAI's published USD model prices. Actual ChatGPT/Codex billing, credits, and subscription quota status should always be checked with the official account or billing page.
 
 USD is the source currency. The CNY view is only a display conversion. When available, CodexScope fetches the USD/CNY rate from the Frankfurter API with the ECB provider selected. If that request fails, it falls back to the last bundled reference rate and marks the conversion as offline fallback in the UI.
 
@@ -149,7 +149,7 @@ CodexScope does not send data to a server. `generate_codex_data.go` reads local 
 
 It does not export prompt text, assistant messages, tool output, or file contents.
 
-Review `data.js` before sharing screenshots or artifacts generated from your own usage.
+Review `data.js` and `data.raw.js` before sharing screenshots or artifacts generated from your own usage.
 
 ## License
 

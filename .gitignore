@@ -9,6 +9,7 @@ __pycache__/
 # Local Codex usage export. This can contain private project names,
 # session ids, timestamps, quota status, and usage patterns.
 data.js
+data.raw.js
 !data.sample.js
 .codexscope-cache.json
 .codexscope-cache.json.stamp

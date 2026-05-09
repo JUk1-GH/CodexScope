@@ -140,7 +140,7 @@ function isVisibleInViewport(rect, height) {
       };
     });
 
-    const interactions = await page.evaluate(() => {
+    const interactions = await page.evaluate(async () => {
       const sessionButton = document.querySelector("#toggleSessions");
       const modelButton = document.querySelector("#toggleModels");
       const count = (selector) => document.querySelectorAll(selector).length;
@@ -219,6 +219,18 @@ function isVisibleInViewport(rect, height) {
         endDate.value = endDate.max || endDate.value;
         endDate.dispatchEvent(new Event("change", { bubbles: true }));
       }
+      await new Promise((resolve) => {
+        const deadline = performance.now() + 1500;
+        const check = () => {
+          const text = document.querySelector("#rangeSummary")?.textContent?.trim() || "";
+          if (text.includes("至") || performance.now() > deadline) {
+            resolve();
+            return;
+          }
+          requestAnimationFrame(check);
+        };
+        check();
+      });
       const rangeAfterCustom = document.querySelector("#rangeSummary")?.textContent?.trim() || "";
       return {
         sessionsExpandable: sessionsToggleNotNeeded || afterSessions > beforeSessions,

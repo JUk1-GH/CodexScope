@@ -18,7 +18,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-const cacheVersion = 4
+const cacheVersion = 6
 const minReadableCacheVersion = 4
 
 // Usage mirrors the token fields emitted by Codex token_count events.
@@ -128,6 +128,74 @@ type LoadedData struct {
 	FailureEvents []RuntimeFailureEvent
 }
 
+type CostSummary struct {
+	Input          float64
+	Cached         float64
+	Output         float64
+	Reasoning      float64
+	Total          float64
+	PricedTokens   int64
+	UnpricedTokens int64
+}
+
+type RawExportPayload struct {
+	SchemaVersion    any `json:"schemaVersion"`
+	RawSchemaVersion int `json:"rawSchemaVersion"`
+	Catalog          any `json:"catalog"`
+	RecordBase       any `json:"recordBase"`
+	RecordsV2        any `json:"recordsV2"`
+	TTFBRecordsV2    any `json:"ttfbRecordsV2"`
+	FailureRecordsV2 any `json:"failureRecordsV2"`
+}
+
+type bucketAccumulator struct {
+	start time.Time
+	end   time.Time
+	usage Usage
+	calls int64
+	cost  CostSummary
+}
+
+type rangeBucketSet struct {
+	start          time.Time
+	end            time.Time
+	step           time.Duration
+	alignedStartMs int64
+	stepMs         int64
+	buckets        []bucketAccumulator
+}
+
+type peakWindowItem struct {
+	ts     time.Time
+	tokens int64
+}
+
+type peakWindowAccumulator struct {
+	window    time.Duration
+	items     []peakWindowItem
+	left      int
+	total     int64
+	peakTotal int64
+	peakTs    time.Time
+	hasPeak   bool
+}
+
+type pricingRule struct {
+	label    string
+	patterns []string
+	input    float64
+	cached   float64
+	output   float64
+}
+
+type PricingRuleExport struct {
+	Label    string   `json:"label"`
+	Patterns []string `json:"patterns"`
+	Input    float64  `json:"input"`
+	Cached   float64  `json:"cached"`
+	Output   float64  `json:"output"`
+}
+
 type sessionFileCandidate struct {
 	path    string
 	mtimeNs int64
@@ -214,19 +282,6 @@ func fmtInt(value int64) string {
 	default:
 		return fmt.Sprintf("%d", value)
 	}
-}
-
-func fmtDuration(seconds *float64) string {
-	if seconds == nil {
-		return "未知"
-	}
-	sec := int64(math.Max(0, *seconds))
-	hours := sec / 3600
-	minutes := (sec % 3600) / 60
-	if hours > 0 {
-		return fmt.Sprintf("%dh %02dm", hours, minutes)
-	}
-	return fmt.Sprintf("%dm", minutes)
 }
 
 func displayTime(ts time.Time, ok bool) string {
@@ -367,11 +422,25 @@ func safePercent(value any) *float64 {
 	return &raw
 }
 
-func percentValue(value *float64) float64 {
-	if value == nil {
+func clampPercentValue(value float64) float64 {
+	if value < 0 {
 		return 0
 	}
-	return *value
+	if value > 100 {
+		return 100
+	}
+	return value
+}
+
+func successFailureRates(calls int64, failures int) (float64, float64) {
+	if calls <= 0 {
+		if failures > 0 {
+			return 0, 100
+		}
+		return 100, 0
+	}
+	failureRate := clampPercentValue(float64(failures) / float64(calls) * 100)
+	return 100 - failureRate, failureRate
 }
 
 func cutoffForDays(days int, now time.Time) time.Time {
@@ -379,6 +448,32 @@ func cutoffForDays(days int, now time.Time) time.Time {
 		return time.Time{}
 	}
 	return now.Add(-time.Duration(days) * 24 * time.Hour)
+}
+
+func localDayStart(value time.Time) time.Time {
+	local := value.Local()
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, local.Location())
+}
+
+func ymd(value time.Time) string {
+	return value.Local().Format("2006-01-02")
+}
+
+func formatRangeLabel(start, end time.Time, preset string) string {
+	switch preset {
+	case "24h":
+		return "最近24小时"
+	case "today":
+		return "今天"
+	case "7":
+		return "7天内"
+	case "30":
+		return "30天内"
+	case "history":
+		return "历史总览"
+	default:
+		return fmt.Sprintf("%s 至 %s", ymd(start), ymd(end.Add(-time.Millisecond)))
+	}
 }
 
 func cacheCoversDays(cachedDays int, requestedDays int) bool {
@@ -463,7 +558,7 @@ func sourceNewerThan(ts time.Time) bool {
 	return false
 }
 
-func fileSignature(root string, out string, days int, trendMinutes int, files []sessionFileCandidate) string {
+func fileSignature(root string, out string, rawOut string, days int, trendMinutes int, files []sessionFileCandidate) string {
 	var totalSize int64
 	var maxMtimeNs int64
 	for _, file := range files {
@@ -472,11 +567,11 @@ func fileSignature(root string, out string, days int, trendMinutes int, files []
 			maxMtimeNs = file.mtimeNs
 		}
 	}
-	return fmt.Sprintf("v=%d\nroot=%s\nout=%s\ndays=%d\ntrend=%d\nfiles=%d:%d:%d\n",
-		cacheVersion, root, out, days, trendMinutes, len(files), totalSize, maxMtimeNs)
+	return fmt.Sprintf("v=%d\nroot=%s\nout=%s\nraw=%s\ndays=%d\ntrend=%d\nfiles=%d:%d:%d\n",
+		cacheVersion, root, out, rawOut, days, trendMinutes, len(files), totalSize, maxMtimeNs)
 }
 
-func outputIsStampedFresh(outPath string, files []sessionFileCandidate, stampPath string, expectedSignature string) bool {
+func outputIsStampedFresh(outPath string, rawOutPath string, files []sessionFileCandidate, stampPath string, expectedSignature string) bool {
 	if outPath == "" || stampPath == "" {
 		return false
 	}
@@ -484,20 +579,69 @@ func outputIsStampedFresh(outPath string, files []sessionFileCandidate, stampPat
 	if err != nil || outInfo.IsDir() || sourceNewerThan(outInfo.ModTime()) {
 		return false
 	}
+	rawInfo, err := os.Stat(rawOutPath)
+	if rawOutPath == "" || err != nil || rawInfo.IsDir() || sourceNewerThan(rawInfo.ModTime()) {
+		return false
+	}
 	stampInfo, err := os.Stat(stampPath)
-	if err != nil || stampInfo.IsDir() || stampInfo.ModTime().Before(outInfo.ModTime()) {
+	if err != nil || stampInfo.IsDir() || stampInfo.ModTime().Before(outInfo.ModTime()) || stampInfo.ModTime().Before(rawInfo.ModTime()) {
 		return false
 	}
 	body, err := os.ReadFile(stampPath)
 	if err != nil {
 		return false
 	}
-	if string(body) != expectedSignature {
+	if string(body) != expectedSignature || !outputHasCurrentSchemaForRawPath(outPath, browserRawDataPath(outPath, rawOutPath)) || !rawOutputHasCurrentSchema(rawOutPath) {
 		return false
 	}
 	outMtime := outInfo.ModTime()
+	if rawInfo.ModTime().Before(outMtime) {
+		outMtime = rawInfo.ModTime()
+	}
 	for _, file := range files {
 		if time.Unix(0, file.mtimeNs).After(outMtime) {
+			return false
+		}
+	}
+	return true
+}
+
+func outputHasCurrentSchema(outPath string) bool {
+	return outputHasCurrentSchemaForRawPath(outPath, "")
+}
+
+func outputHasCurrentSchemaForRawPath(outPath string, rawDataPath string) bool {
+	needles := []string{`"schemaVersion":2`, `"rawDataPath"`, `"views"`, `"pricingRules"`}
+	if rawDataPath != "" {
+		quoted, err := json.Marshal(rawDataPath)
+		if err != nil {
+			return false
+		}
+		needles = append(needles, `"rawDataPath":`+string(quoted))
+	}
+	return fileHeadContainsAll(outPath, 128*1024, needles...)
+}
+
+func rawOutputHasCurrentSchema(outPath string) bool {
+	return fileHeadContainsAll(outPath, 16*1024, `window.CODEXSCOPE_RAW_DATA`, `"schemaVersion":2`, `"rawSchemaVersion":1`)
+}
+
+func fileHeadContainsAll(path string, limit int64, needles ...string) bool {
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	if limit <= 0 {
+		limit = 4096
+	}
+	body, err := io.ReadAll(io.LimitReader(file, limit))
+	if err != nil {
+		return false
+	}
+	text := string(body)
+	for _, needle := range needles {
+		if !strings.Contains(text, needle) {
 			return false
 		}
 	}
@@ -848,9 +992,11 @@ func parseSessionFiles(files []sessionFileCandidate, cutoff time.Time, cacheFile
 	return results
 }
 
-func loadSessions(root string, cutoff time.Time, cachePath string, days int) LoadedData {
+func loadSessions(root string, cutoff time.Time, cachePath string, days int, cacheFiles map[string]FileCache) LoadedData {
 	loaded := LoadedData{}
-	cacheFiles := loadCache(cachePath, days)
+	if cacheFiles == nil {
+		cacheFiles = loadCache(cachePath, days)
+	}
 	var latestLimitsTs time.Time
 
 	files := collectSessionFiles(root, cutoff)
@@ -878,15 +1024,26 @@ func loadSessions(root string, cutoff time.Time, cachePath string, days int) Loa
 	return loaded
 }
 
-func outputIsFresh(outPath string, files []sessionFileCandidate, cacheFiles map[string]FileCache) bool {
-	if outPath == "" || len(files) == 0 || len(cacheFiles) != len(files) {
+func outputIsFresh(outPath string, rawOutPath string, files []sessionFileCandidate, cacheFiles map[string]FileCache) bool {
+	if outPath == "" || rawOutPath == "" || len(files) == 0 || len(cacheFiles) != len(files) {
 		return false
 	}
 	outInfo, err := os.Stat(outPath)
 	if err != nil || outInfo.IsDir() {
 		return false
 	}
+	expectedRawDataPath := browserRawDataPath(outPath, rawOutPath)
+	if !outputHasCurrentSchemaForRawPath(outPath, expectedRawDataPath) {
+		return false
+	}
+	rawInfo, err := os.Stat(rawOutPath)
+	if err != nil || rawInfo.IsDir() || !rawOutputHasCurrentSchema(rawOutPath) {
+		return false
+	}
 	if sourceInfo, err := os.Stat("generate_codex_data.go"); err == nil && outInfo.ModTime().Before(sourceInfo.ModTime()) {
+		return false
+	}
+	if sourceInfo, err := os.Stat("generate_codex_data.go"); err == nil && rawInfo.ModTime().Before(sourceInfo.ModTime()) {
 		return false
 	}
 	for _, file := range files {
@@ -898,206 +1055,621 @@ func outputIsFresh(outPath string, files []sessionFileCandidate, cacheFiles map[
 	return true
 }
 
-func bucketEvents(events []RuntimeEvent, now time.Time, minutes int) []map[string]any {
-	// This precomputed trend is retained for compatibility with older exports.
-	// The current UI also keeps raw records so date filters can recompute buckets
-	// in the browser without rerunning the generator.
-	bucketCount := 11
-	end := now.Truncate(time.Minute)
-	start := end.Add(-time.Duration(minutes) * time.Minute)
-	step := float64(minutes) / float64(bucketCount-1)
-	buckets := make([]struct {
-		start time.Time
-		end   time.Time
-		usage Usage
-	}, bucketCount)
+var modelPricingUSDPerM = []pricingRule{
+	{label: "gpt-5.5", patterns: []string{"gpt-5.5"}, input: 5.00, cached: 0.50, output: 30.00},
+	{label: "gpt-5.4 mini", patterns: []string{"gpt-5.4-mini", "gpt_5.4_mini", "gpt 5.4 mini"}, input: 0.75, cached: 0.075, output: 4.50},
+	{label: "gpt-5.4", patterns: []string{"gpt-5.4"}, input: 2.50, cached: 0.25, output: 15.00},
+	{label: "gpt-5.3 codex spark", patterns: []string{"gpt-5.3-codex-spark", "gpt_5.3_codex_spark", "gpt 5.3 codex spark"}, input: 1.75, cached: 0.175, output: 14.00},
+	{label: "gpt-5.3 codex", patterns: []string{"gpt-5.3-codex", "gpt_5.3_codex", "gpt 5.3 codex"}, input: 1.75, cached: 0.175, output: 14.00},
+	{label: "gpt-5.2 codex", patterns: []string{"gpt-5.2-codex", "gpt_5.2_codex", "gpt 5.2 codex"}, input: 1.75, cached: 0.175, output: 14.00},
+	{label: "gpt-5 / 5.1 codex", patterns: []string{"gpt-5.1-codex", "gpt_5.1_codex", "gpt 5.1 codex", "gpt-5-codex", "gpt_5_codex", "gpt 5 codex", "gpt-5"}, input: 1.25, cached: 0.125, output: 10.00},
+}
+
+func pricingRulesPayload() []PricingRuleExport {
+	out := make([]PricingRuleExport, 0, len(modelPricingUSDPerM))
+	for _, rule := range modelPricingUSDPerM {
+		out = append(out, PricingRuleExport{
+			Label:    rule.label,
+			Patterns: append([]string(nil), rule.patterns...),
+			Input:    rule.input,
+			Cached:   rule.cached,
+			Output:   rule.output,
+		})
+	}
+	return out
+}
+
+func pricingForModel(model string) *pricingRule {
+	model = strings.ToLower(model)
+	for i := range modelPricingUSDPerM {
+		for _, pattern := range modelPricingUSDPerM[i].patterns {
+			if strings.Contains(model, pattern) {
+				return &modelPricingUSDPerM[i]
+			}
+		}
+	}
+	return nil
+}
+
+func addCost(dst *CostSummary, src CostSummary) {
+	dst.Input += src.Input
+	dst.Cached += src.Cached
+	dst.Output += src.Output
+	dst.Reasoning += src.Reasoning
+	dst.Total += src.Total
+	dst.PricedTokens += src.PricedTokens
+	dst.UnpricedTokens += src.UnpricedTokens
+}
+
+func priceUsage(model string, usage Usage) CostSummary {
+	inputTokens := max64(0, usage.Input)
+	cachedRaw := max64(0, usage.Cached)
+	outputTokens := max64(0, usage.Output)
+	reasoningRaw := max64(0, usage.Reasoning)
+	cachedTokens := cachedRaw
+	if inputTokens > 0 && cachedTokens > inputTokens {
+		cachedTokens = inputTokens
+	}
+	billableInput := max64(0, inputTokens-cachedTokens)
+	billedReasoning := reasoningRaw
+	if outputTokens > 0 && billedReasoning > outputTokens {
+		billedReasoning = outputTokens
+	}
+	visibleOutput := max64(0, outputTokens-billedReasoning)
+	pricedTokens := billableInput + cachedTokens + visibleOutput + billedReasoning
+	rule := pricingForModel(model)
+	if rule == nil {
+		return CostSummary{UnpricedTokens: pricedTokens}
+	}
+	multiplier := 1.0 / 1_000_000.0
+	input := float64(billableInput) * rule.input * multiplier
+	cached := float64(cachedTokens) * rule.cached * multiplier
+	output := float64(visibleOutput) * rule.output * multiplier
+	reasoning := float64(billedReasoning) * rule.output * multiplier
+	return CostSummary{
+		Input:        input,
+		Cached:       cached,
+		Output:       output,
+		Reasoning:    reasoning,
+		Total:        input + cached + output + reasoning,
+		PricedTokens: pricedTokens,
+	}
+}
+
+func chooseNiceStep(duration time.Duration, targetPoints int) time.Duration {
+	if targetPoints <= 0 {
+		targetPoints = 180
+	}
+	ideal := duration / time.Duration(targetPoints)
+	steps := []time.Duration{
+		time.Minute,
+		2 * time.Minute,
+		5 * time.Minute,
+		10 * time.Minute,
+		15 * time.Minute,
+		30 * time.Minute,
+		time.Hour,
+		2 * time.Hour,
+		3 * time.Hour,
+		6 * time.Hour,
+		12 * time.Hour,
+		24 * time.Hour,
+		48 * time.Hour,
+		72 * time.Hour,
+		7 * 24 * time.Hour,
+		14 * 24 * time.Hour,
+		30 * 24 * time.Hour,
+	}
+	for _, step := range steps {
+		if step >= ideal {
+			return step
+		}
+	}
+	return steps[len(steps)-1]
+}
+
+func formatBucketLabel(ts time.Time, step time.Duration, start, end time.Time) string {
+	local := ts.Local()
+	timeLabel := local.Format("15:04")
+	if step >= 24*time.Hour {
+		return fmt.Sprintf("%d/%d", int(local.Month()), local.Day())
+	}
+	if end.Sub(start) > 24*time.Hour {
+		return fmt.Sprintf("%d/%d %s", int(local.Month()), local.Day(), timeLabel)
+	}
+	return timeLabel
+}
+
+func formatPeakLabelForRange(ts time.Time, ok bool, start, end time.Time) string {
+	if !ok || ts.IsZero() {
+		return "--"
+	}
+	local := ts.Local()
+	if end.Sub(start) > 24*time.Hour {
+		return fmt.Sprintf("%d/%d %s", int(local.Month()), local.Day(), local.Format("15:04"))
+	}
+	return local.Format("15:04")
+}
+
+func formatStepLabel(step time.Duration) string {
+	minutes := int(math.Round(step.Minutes()))
+	if minutes < 60 {
+		return fmt.Sprintf("%d分钟/点", minutes)
+	}
+	if minutes < 24*60 {
+		return fmt.Sprintf("%d小时/点", minutes/60)
+	}
+	return fmt.Sprintf("%d天/点", minutes/(24*60))
+}
+
+func newRangeBucketSet(start, end time.Time, step time.Duration) *rangeBucketSet {
+	if !end.After(start) {
+		end = start.Add(time.Minute)
+	}
+	if step < time.Minute {
+		step = time.Minute
+	}
+	startMs := start.UnixMilli()
+	stepMs := int64(step / time.Millisecond)
+	alignedStartMs := (startMs / stepMs) * stepMs
+	endMs := end.UnixMilli()
+	alignedEndMs := ((endMs + stepMs - 1) / stepMs) * stepMs
+	bucketCount := int(math.Max(1, math.Ceil(float64(alignedEndMs-alignedStartMs)/float64(stepMs))))
+	buckets := make([]bucketAccumulator, bucketCount)
 	for i := range buckets {
-		bStart := start.Add(time.Duration(math.Round(float64(i)*step)) * time.Minute)
-		bEnd := end.Add(time.Second)
-		if i < bucketCount-1 {
-			bEnd = start.Add(time.Duration(math.Round(float64(i+1)*step)) * time.Minute)
+		buckets[i].start = time.UnixMilli(alignedStartMs + int64(i)*stepMs)
+		buckets[i].end = time.UnixMilli(alignedStartMs + int64(i+1)*stepMs)
+		if i == bucketCount-1 {
+			buckets[i].end = time.UnixMilli(alignedEndMs + 1)
 		}
-		buckets[i].start = bStart
-		buckets[i].end = bEnd
 	}
-	for _, event := range events {
-		if event.Ts.Before(start) || event.Ts.After(end) {
-			continue
-		}
-		idx := int(((event.Ts.Sub(start)).Minutes()) / step)
-		if idx < 0 {
-			idx = 0
-		}
-		if idx >= bucketCount {
-			idx = bucketCount - 1
-		}
-		addUsage(&buckets[idx].usage, event.Usage)
+	return &rangeBucketSet{
+		start:          start,
+		end:            end,
+		step:           step,
+		alignedStartMs: alignedStartMs,
+		stepMs:         stepMs,
+		buckets:        buckets,
 	}
-	rows := make([]map[string]any, 0, len(buckets))
-	for _, bucket := range buckets {
+}
+
+func (set *rangeBucketSet) addEvent(event RuntimeEvent, cost CostSummary) {
+	if set == nil || event.Ts.Before(set.start) || event.Ts.After(set.end) {
+		return
+	}
+	idx := int((event.Ts.UnixMilli() - set.alignedStartMs) / set.stepMs)
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(set.buckets) {
+		idx = len(set.buckets) - 1
+	}
+	addUsage(&set.buckets[idx].usage, event.Usage)
+	set.buckets[idx].calls++
+	addCost(&set.buckets[idx].cost, cost)
+}
+
+func (set *rangeBucketSet) compactTrend() [][]any {
+	if set == nil {
+		return nil
+	}
+	out := make([][]any, 0, len(set.buckets))
+	for _, bucket := range set.buckets {
+		out = append(out, []any{
+			formatBucketLabel(bucket.start, set.step, set.start, set.end),
+			bucket.usage.Total,
+			bucket.usage.Cached,
+			bucket.usage.Output,
+			bucket.usage.Input,
+			bucket.usage.Reasoning,
+			bucket.calls,
+			roundCost(bucket.cost.Total),
+		})
+	}
+	return out
+}
+
+func (set *rangeBucketSet) compactDistribution() [][]any {
+	if set == nil {
+		return nil
+	}
+	out := make([][]any, 0, len(set.buckets))
+	for _, bucket := range set.buckets {
+		out = append(out, []any{
+			formatBucketLabel(bucket.start, set.step, set.start, set.end),
+			bucket.usage.Total,
+			bucket.calls,
+			roundCost(bucket.cost.Total),
+		})
+	}
+	return out
+}
+
+func (set *rangeBucketSet) stepLabel() string {
+	if set == nil || len(set.buckets) == 0 {
+		return ""
+	}
+	return formatStepLabel(set.step)
+}
+
+func (set *rangeBucketSet) stepMinutes() float64 {
+	if set == nil || len(set.buckets) == 0 {
+		return 0
+	}
+	return set.step.Minutes()
+}
+
+func roundCost(value float64) float64 {
+	return math.Round(value*1_000_000) / 1_000_000
+}
+
+func (acc *peakWindowAccumulator) add(ts time.Time, tokens int64) {
+	if acc.window <= 0 {
+		acc.window = time.Minute
+	}
+	acc.items = append(acc.items, peakWindowItem{ts: ts, tokens: tokens})
+	acc.total += tokens
+	for acc.left < len(acc.items) && ts.Sub(acc.items[acc.left].ts) >= acc.window {
+		acc.total -= acc.items[acc.left].tokens
+		acc.left++
+	}
+	if acc.left > 1024 && acc.left*2 > len(acc.items) {
+		copy(acc.items, acc.items[acc.left:])
+		acc.items = acc.items[:len(acc.items)-acc.left]
+		acc.left = 0
+	}
+	if acc.total > acc.peakTotal {
+		acc.peakTotal = acc.total
+		acc.peakTs = ts
+		acc.hasPeak = true
+	}
+}
+
+func (acc *peakWindowAccumulator) result() (int64, time.Time, bool) {
+	return acc.peakTotal, acc.peakTs, acc.hasPeak
+}
+
+func buildCostParts(costs CostSummary) []map[string]any {
+	parts := []struct {
+		key       string
+		name      string
+		value     float64
+		className string
+	}{
+		{"input", "输入", costs.Input, "cost-input"},
+		{"cached", "缓存", costs.Cached, "cost-cache"},
+		{"output", "输出", costs.Output, "cost-output"},
+		{"reasoning", "推理", costs.Reasoning, "cost-reasoning"},
+	}
+	rows := make([]map[string]any, 0, len(parts))
+	for _, part := range parts {
+		percent := 0.0
+		if costs.Total > 0 {
+			percent = part.value / costs.Total * 100
+		}
 		rows = append(rows, map[string]any{
-			"label":     displayTime(bucket.start, true),
-			"input":     bucket.usage.Input,
-			"cached":    bucket.usage.Cached,
-			"output":    bucket.usage.Output,
-			"reasoning": bucket.usage.Reasoning,
-			"total":     bucket.usage.Total,
+			"key":       part.key,
+			"name":      part.name,
+			"value":     part.value,
+			"className": part.className,
+			"percent":   percent,
 		})
 	}
 	return rows
 }
 
-func peakRate(events []RuntimeEvent) (int64, time.Time, bool) {
-	// Peak TPM is a sliding one-minute sum over chronological token events.
-	window := time.Minute
-	left := 0
-	var total int64
-	var peakTotal int64
-	var peakTs time.Time
-	var hasPeak bool
-	for right, event := range events {
-		total += event.Usage.Total
-		for left <= right && event.Ts.Sub(events[left].Ts) >= window {
-			total -= events[left].Usage.Total
-			left++
-		}
-		if total > peakTotal {
-			peakTotal = total
-			peakTs = event.Ts
-			hasPeak = true
-		}
+func runtimeItemsInRange[T any](items []T, start, end time.Time, itemTime func(T) time.Time) []T {
+	if len(items) == 0 {
+		return nil
 	}
-	return peakTotal, peakTs, hasPeak
+	lo := sort.Search(len(items), func(i int) bool {
+		return !itemTime(items[i]).Before(start)
+	})
+	hi := sort.Search(len(items), func(i int) bool {
+		return itemTime(items[i]).After(end)
+	})
+	if lo > hi {
+		return nil
+	}
+	return items[lo:hi]
 }
 
-func buildPayload(root string, days int, trendMinutes int, cachePath string) map[string]any {
-	// Build the public data contract consumed by index.html. Compact array rows
-	// are smaller to load than repeated object keys; catalogs retain labels for
-	// display without duplicating them in every event record.
-	now := time.Now().UTC()
-	cutoff := cutoffForDays(days, now)
-	loaded := loadSessions(root, cutoff, cachePath, days)
+func runtimeEventsInRange(events []RuntimeEvent, start, end time.Time) []RuntimeEvent {
+	return runtimeItemsInRange(events, start, end, func(event RuntimeEvent) time.Time {
+		return event.Ts
+	})
+}
 
-	sort.SliceStable(loaded.Events, func(i, j int) bool { return loaded.Events[i].Ts.Before(loaded.Events[j].Ts) })
-	sort.SliceStable(loaded.TTFBEvents, func(i, j int) bool { return loaded.TTFBEvents[i].Ts.Before(loaded.TTFBEvents[j].Ts) })
-	sort.SliceStable(loaded.FailureEvents, func(i, j int) bool { return loaded.FailureEvents[i].Ts.Before(loaded.FailureEvents[j].Ts) })
+func runtimeFailuresInRange(events []RuntimeFailureEvent, start, end time.Time) []RuntimeFailureEvent {
+	return runtimeItemsInRange(events, start, end, func(event RuntimeFailureEvent) time.Time {
+		return event.Ts
+	})
+}
+
+func runtimeTTFBInRange(events []RuntimeTTFBEvent, start, end time.Time) []RuntimeTTFBEvent {
+	return runtimeItemsInRange(events, start, end, func(event RuntimeTTFBEvent) time.Time {
+		return event.Ts
+	})
+}
+
+func loadedDataBounds(loaded LoadedData, fallback time.Time) (time.Time, time.Time, bool) {
+	start := fallback
+	end := fallback
+	hasData := false
+	visit := func(ts time.Time) {
+		if ts.IsZero() {
+			return
+		}
+		if !hasData || ts.Before(start) {
+			start = ts
+		}
+		if !hasData || ts.After(end) {
+			end = ts
+		}
+		hasData = true
+	}
+	for _, event := range loaded.Events {
+		visit(event.Ts)
+	}
+	for _, event := range loaded.TTFBEvents {
+		visit(event.Ts)
+	}
+	for _, event := range loaded.FailureEvents {
+		visit(event.Ts)
+	}
+	return start, end, hasData
+}
+
+func buildView(key, label string, start, end time.Time, loaded LoadedData, sessionCatalog map[string]map[string]string, limits map[string]any) map[string]any {
+	type sessionRow struct {
+		name     string
+		model    string
+		tokens   int64
+		requests int64
+		status   string
+	}
+	type modelRow struct {
+		name         string
+		usage        Usage
+		tokens       int64
+		requests     int64
+		cost         float64
+		latencyTotal int64
+		latencyCount int64
+	}
 
 	var totals Usage
-	for _, event := range loaded.Events {
-		addUsage(&totals, event.Usage)
-	}
+	var calls int64
+	var costs CostSummary
+	bySession := map[string]*sessionRow{}
+	byModel := map[string]*modelRow{}
 
-	byModel := map[string]map[string]any{}
-	for _, session := range loaded.Sessions {
-		model := session.Model
-		if model == "" {
-			model = "unknown"
+	duration := end.Sub(start)
+	if duration <= 0 {
+		duration = time.Minute
+	}
+	trendBuckets := newRangeBucketSet(start, end, chooseNiceStep(duration, 180))
+	distributionBuckets := newRangeBucketSet(start, end, chooseNiceStep(duration, 32))
+	peak := peakWindowAccumulator{window: time.Minute}
+
+	for _, event := range runtimeEventsInRange(loaded.Events, start, end) {
+		addUsage(&totals, event.Usage)
+		calls++
+		model := nonEmpty(event.Model, "unknown")
+		cost := priceUsage(model, event.Usage)
+		addCost(&costs, cost)
+		trendBuckets.addEvent(event, cost)
+		distributionBuckets.addEvent(event, cost)
+		peak.add(event.Ts, event.Usage.Total)
+
+		catalog := sessionCatalog[event.Sid]
+		name := fmt.Sprintf("会话 %s", tail(event.Sid, 6))
+		if catalog != nil && catalog["name"] != "" {
+			name = catalog["name"]
 		}
+		session := bySession[event.Sid]
+		if session == nil {
+			session = &sessionRow{name: name, model: model, status: "ok"}
+			bySession[event.Sid] = session
+		}
+		session.tokens += event.Usage.Total
+		session.requests++
+
 		row := byModel[model]
 		if row == nil {
-			row = map[string]any{"tokens": int64(0), "requests": int64(0), "ttfb_ms": int64(0), "ttfb_count": int64(0)}
+			row = &modelRow{name: model}
 			byModel[model] = row
 		}
-		row["tokens"] = row["tokens"].(int64) + session.Usage.Total
-		row["requests"] = row["requests"].(int64) + session.Calls
-		row["ttfb_ms"] = row["ttfb_ms"].(int64) + session.TTFBMs
-		row["ttfb_count"] = row["ttfb_count"].(int64) + session.TTFBCount
+		addUsage(&row.usage, event.Usage)
+		row.tokens += event.Usage.Total
+		row.requests++
+		row.cost += cost.Total
 	}
 
-	sort.Slice(loaded.Sessions, func(i, j int) bool { return loaded.Sessions[i].Usage.Total > loaded.Sessions[j].Usage.Total })
-	sessionLimit := min(len(loaded.Sessions), 20)
-	sessionRows := make([]map[string]any, 0, sessionLimit)
-	for i := 0; i < sessionLimit; i++ {
-		session := loaded.Sessions[i]
-		var duration *float64
-		if session.DurationMs > 0 {
-			sec := float64(session.DurationMs) / 1000
-			duration = &sec
+	failureCount := 0
+	for _, event := range runtimeFailuresInRange(loaded.FailureEvents, start, end) {
+		failureCount++
+		if session := bySession[event.Sid]; session != nil {
+			session.status = "warn"
 		}
-		sessionRows = append(sessionRows, map[string]any{
-			"rank":        i + 1,
-			"name":        projectName(session.Cwd, fmt.Sprintf("session %s", tail(session.Sid, 6))),
-			"model":       session.Model,
-			"tokens":      session.Usage.Total,
-			"tokensLabel": fmtInt(session.Usage.Total),
-			"requests":    session.Calls,
-			"duration":    fmtDuration(duration),
-			"status":      map[bool]string{true: "ok", false: "warn"}[session.Failures == 0],
+	}
+	for _, event := range runtimeTTFBInRange(loaded.TTFBEvents, start, end) {
+		model := nonEmpty(event.Model, "unknown")
+		row := byModel[model]
+		if row == nil {
+			row = &modelRow{name: model}
+			byModel[model] = row
+		}
+		row.latencyTotal += event.TTFBMs
+		row.latencyCount++
+	}
+
+	peakTotal, peakTs, hasPeak := peak.result()
+
+	cacheHit := 0.0
+	if totals.Input > 0 {
+		cacheHit = float64(totals.Cached) / float64(totals.Input) * 100
+	}
+	successRate, failureRate := successFailureRates(calls, failureCount)
+
+	sessionRows := make([]*sessionRow, 0, len(bySession))
+	for _, row := range bySession {
+		sessionRows = append(sessionRows, row)
+	}
+	sort.Slice(sessionRows, func(i, j int) bool { return sessionRows[i].tokens > sessionRows[j].tokens })
+	maxSessionTokens := int64(1)
+	maxSessionRequests := int64(1)
+	for _, row := range sessionRows {
+		if row.tokens > maxSessionTokens {
+			maxSessionTokens = row.tokens
+		}
+		if row.requests > maxSessionRequests {
+			maxSessionRequests = row.requests
+		}
+	}
+	if len(sessionRows) > 20 {
+		sessionRows = sessionRows[:20]
+	}
+	sessionOut := make([]map[string]any, 0, len(sessionRows))
+	for index, row := range sessionRows {
+		sessionOut = append(sessionOut, map[string]any{
+			"rank":           index + 1,
+			"name":           row.name,
+			"model":          row.model,
+			"tokens":         row.tokens,
+			"tokensLabel":    fmtInt(row.tokens),
+			"requests":       row.requests,
+			"tokenPercent":   int(math.Round(float64(row.tokens) / float64(maxSessionTokens) * 100)),
+			"requestPercent": int(math.Round(float64(row.requests) / float64(maxSessionRequests) * 100)),
+			"status":         row.status,
 		})
 	}
-	var maxSessionTokens int64 = 1
-	for _, row := range sessionRows {
-		if tokens := row["tokens"].(int64); tokens > maxSessionTokens {
-			maxSessionTokens = tokens
-		}
-	}
-	for _, row := range sessionRows {
-		row["percent"] = int(math.Round(float64(row["tokens"].(int64)) / float64(maxSessionTokens) * 100))
-	}
 
-	modelNames := make([]string, 0, len(byModel))
-	for name := range byModel {
-		modelNames = append(modelNames, name)
+	modelRows := make([]*modelRow, 0, len(byModel))
+	for _, row := range byModel {
+		modelRows = append(modelRows, row)
 	}
-	sort.Slice(modelNames, func(i, j int) bool {
-		return byModel[modelNames[i]]["tokens"].(int64) > byModel[modelNames[j]]["tokens"].(int64)
-	})
-	modelLimit := min(len(modelNames), 12)
-	modelRows := make([]map[string]any, 0, modelLimit)
-	var maxModelTokens int64 = 1
-	for i := 0; i < modelLimit; i++ {
-		name := modelNames[i]
-		row := byModel[name]
-		tokens := row["tokens"].(int64)
-		if tokens > maxModelTokens {
-			maxModelTokens = tokens
+	sort.Slice(modelRows, func(i, j int) bool { return modelRows[i].tokens > modelRows[j].tokens })
+	maxModelTokens := int64(1)
+	for _, row := range modelRows {
+		if row.tokens > maxModelTokens {
+			maxModelTokens = row.tokens
 		}
-		latencyCount := row["ttfb_count"].(int64)
+	}
+	modelLimit := min(len(modelRows), 12)
+	modelOut := make([]map[string]any, 0, modelLimit)
+	for index := 0; index < modelLimit; index++ {
+		row := modelRows[index]
 		latency := 0.0
 		latencyLabel := "--"
-		if latencyCount > 0 {
-			latency = float64(row["ttfb_ms"].(int64)) / float64(latencyCount) / 1000
+		if row.latencyCount > 0 {
+			latency = float64(row.latencyTotal) / float64(row.latencyCount) / 1000
 			latencyLabel = fmt.Sprintf("%.2fs", latency)
 		}
-		modelRows = append(modelRows, map[string]any{
-			"name":         name,
-			"tokens":       tokens,
-			"tokensLabel":  fmtInt(tokens),
-			"requests":     row["requests"].(int64),
+		modelOut = append(modelOut, map[string]any{
+			"name":         row.name,
+			"tokens":       row.tokens,
+			"tokensLabel":  fmtInt(row.tokens),
+			"requests":     row.requests,
+			"input":        row.usage.Input,
+			"cached":       row.usage.Cached,
+			"output":       row.usage.Output,
+			"reasoning":    row.usage.Reasoning,
 			"latency":      latency,
 			"latencyLabel": latencyLabel,
+			"cost":         row.cost,
+			"percent":      int(math.Round(float64(row.tokens) / float64(maxModelTokens) * 100)),
 		})
 	}
-	for _, row := range modelRows {
-		row["percent"] = int(math.Round(float64(row["tokens"].(int64)) / float64(maxModelTokens) * 100))
+
+	sort.Slice(modelRows, func(i, j int) bool { return modelRows[i].cost > modelRows[j].cost })
+	costLimit := min(len(modelRows), 4)
+	maxModelCost := 1.0
+	for i := 0; i < costLimit; i++ {
+		if modelRows[i].cost > maxModelCost {
+			maxModelCost = modelRows[i].cost
+		}
+	}
+	costModels := make([]map[string]any, 0, costLimit)
+	for i := 0; i < costLimit; i++ {
+		row := modelRows[i]
+		costModels = append(costModels, map[string]any{
+			"name":    row.name,
+			"rank":    i + 1,
+			"cost":    row.cost,
+			"percent": int(math.Round(row.cost / maxModelCost * 100)),
+		})
 	}
 
-	trend := bucketEvents(loaded.Events, now, trendMinutes)
-	peakTotal, peakTs, hasPeak := peakRate(loaded.Events)
-
-	primary := mapValue(loaded.Limits, "primary")
-	secondary := mapValue(loaded.Limits, "secondary")
+	primary := mapValue(limits, "primary")
+	secondary := mapValue(limits, "secondary")
 	primaryUsed := safePercent(primary["used_percent"])
 	secondaryUsed := safePercent(secondary["used_percent"])
 	primaryReset, hasPrimaryReset := resetTime(primary["resets_at"])
 	secondaryReset, hasSecondaryReset := resetTime(secondary["resets_at"])
 
-	var calls int64
-	var failures int64
-	for _, session := range loaded.Sessions {
-		calls += session.Calls
-		failures += session.Failures
+	return map[string]any{
+		"key":   key,
+		"label": label,
+		"range": map[string]any{"start": start.UnixMilli(), "end": end.UnixMilli()},
+		"summary": map[string]any{
+			"totalTokens":      totals.Total,
+			"totalTokensLabel": fmtInt(totals.Total),
+			"inputTokens":      totals.Input,
+			"inputLabel":       fmtInt(totals.Input),
+			"cachedTokens":     totals.Cached,
+			"cachedLabel":      fmtInt(totals.Cached),
+			"outputTokens":     totals.Output,
+			"outputLabel":      fmtInt(totals.Output),
+			"reasoningTokens":  totals.Reasoning,
+			"reasoningLabel":   fmtInt(totals.Reasoning),
+			"requests":         calls,
+			"requestsLabel":    comma(calls),
+			"failures":         failureCount,
+			"successRate":      successRate,
+			"successRateLabel": fmt.Sprintf("%.1f%%", successRate),
+			"cacheHit":         cacheHit,
+			"cacheHitLabel":    fmt.Sprintf("%.1f%%", cacheHit),
+			"failureRate":      failureRate,
+			"peakTokens":       peakTotal,
+			"peakLabel":        fmtInt(peakTotal),
+			"peakTime":         formatPeakLabelForRange(peakTs, hasPeak, start, end),
+			"peakTpmLabel":     fmt.Sprintf("%s TPM", fmtInt(peakTotal)),
+		},
+		"cost": map[string]any{
+			"total":            costs.Total,
+			"average":          map[bool]float64{true: costs.Total / math.Max(1, float64(calls)), false: 0}[calls > 0],
+			"rangeTokensLabel": fmtInt(totals.Total),
+			"parts":            buildCostParts(costs),
+			"unpricedTokens":   costs.UnpricedTokens,
+		},
+		"trend":            trendBuckets.compactTrend(),
+		"trendStepLabel":   trendBuckets.stepLabel(),
+		"trendStepMinutes": trendBuckets.stepMinutes(),
+		"distribution":     distributionBuckets.compactDistribution(),
+		"sessions":         sessionOut,
+		"models":           modelOut,
+		"costModels":       costModels,
+		"risk": []map[string]any{
+			quotaRiskRow("5h 窗口", primaryUsed, primaryReset, hasPrimaryReset, "blue"),
+			quotaRiskRow("周限额", secondaryUsed, secondaryReset, hasSecondaryReset, "teal"),
+			{"name": "缓存", "value": cacheHit, "label": fmt.Sprintf("命中 %.0f%%", cacheHit), "note": "输入 token", "tone": "teal"},
+			{"name": "失败", "value": failureRate, "label": fmt.Sprintf("%.1f%%", failureRate), "note": fmt.Sprintf("%d 次失败", failureCount), "tone": "amber"},
+		},
 	}
-	successRate := 100.0
-	failureRate := 0.0
-	if calls > 0 {
-		successRate = math.Max(0, math.Min(100, float64(calls-failures)/float64(calls)*100))
-		failureRate = math.Max(0, math.Min(100, float64(failures)/float64(calls)*100))
-	}
-	cacheHit := 0.0
-	if totals.Input > 0 {
-		cacheHit = float64(totals.Cached) / float64(totals.Input) * 100
-	}
+}
+
+func buildPayload(root string, days int, trendMinutes int, cachePath string, cacheFiles map[string]FileCache) map[string]any {
+	// Build the public data contract consumed by index.html. Compact array rows
+	// are smaller to load than repeated object keys; catalogs retain labels for
+	// display without duplicating them in every event record.
+	now := time.Now().UTC()
+	cutoff := cutoffForDays(days, now)
+	loaded := loadSessions(root, cutoff, cachePath, days, cacheFiles)
+
+	sort.SliceStable(loaded.Events, func(i, j int) bool { return loaded.Events[i].Ts.Before(loaded.Events[j].Ts) })
+	sort.SliceStable(loaded.TTFBEvents, func(i, j int) bool { return loaded.TTFBEvents[i].Ts.Before(loaded.TTFBEvents[j].Ts) })
+	sort.SliceStable(loaded.FailureEvents, func(i, j int) bool { return loaded.FailureEvents[i].Ts.Before(loaded.FailureEvents[j].Ts) })
 
 	sessionCatalog := map[string]map[string]string{}
 	for _, session := range loaded.Sessions {
@@ -1112,12 +1684,56 @@ func buildPayload(root string, days int, trendMinutes int, cachePath string) map
 		}
 	}
 
-	records := make([][]any, 0, len(loaded.Events))
+	sessionIDs := make([]string, 0, len(sessionCatalog))
+	for sid := range sessionCatalog {
+		sessionIDs = append(sessionIDs, sid)
+	}
+	sort.Strings(sessionIDs)
+	sidToIndex := make(map[string]int, len(sessionIDs))
+	sessionCatalogRows := make([][]any, 0, len(sessionIDs))
+	for index, sid := range sessionIDs {
+		sidToIndex[sid] = index
+		catalog := sessionCatalog[sid]
+		sessionCatalogRows = append(sessionCatalogRows, []any{sid, catalog["name"], catalog["model"]})
+	}
+	modelToIndex := map[string]int{}
+	modelCatalog := make([]string, 0)
+	addModel := func(model string) int {
+		model = nonEmpty(model, "unknown")
+		if index, ok := modelToIndex[model]; ok {
+			return index
+		}
+		index := len(modelCatalog)
+		modelToIndex[model] = index
+		modelCatalog = append(modelCatalog, model)
+		return index
+	}
+	for _, session := range loaded.Sessions {
+		addModel(session.Model)
+	}
 	for _, event := range loaded.Events {
-		records = append(records, []any{
-			event.Ts.UnixMilli(),
-			event.Sid,
-			nonEmpty(event.Model, "unknown"),
+		addModel(event.Model)
+	}
+	for _, event := range loaded.TTFBEvents {
+		addModel(event.Model)
+	}
+	for _, event := range loaded.FailureEvents {
+		addModel(event.Model)
+	}
+
+	dataStart, dataEnd, hasData := loadedDataBounds(loaded, now)
+	recordBase := dataStart.UnixMilli()
+	recordsV2 := make([][]any, 0, len(loaded.Events))
+	for _, event := range loaded.Events {
+		sid := nonEmpty(event.Sid, "unknown")
+		if _, ok := sidToIndex[sid]; !ok {
+			sidToIndex[sid] = len(sessionCatalogRows)
+			sessionCatalogRows = append(sessionCatalogRows, []any{sid, fmt.Sprintf("session %s", tail(sid, 6)), nonEmpty(event.Model, "unknown")})
+		}
+		recordsV2 = append(recordsV2, []any{
+			event.Ts.UnixMilli() - recordBase,
+			sidToIndex[sid],
+			addModel(event.Model),
 			event.Usage.Input,
 			event.Usage.Cached,
 			event.Usage.Output,
@@ -1125,59 +1741,74 @@ func buildPayload(root string, days int, trendMinutes int, cachePath string) map
 			event.Usage.Total,
 		})
 	}
-	ttfbRecords := make([][]any, 0, len(loaded.TTFBEvents))
+	ttfbRecordsV2 := make([][]any, 0, len(loaded.TTFBEvents))
 	for _, event := range loaded.TTFBEvents {
-		ttfbRecords = append(ttfbRecords, []any{event.Ts.UnixMilli(), event.Sid, nonEmpty(event.Model, "unknown"), event.TTFBMs})
+		sid := nonEmpty(event.Sid, "unknown")
+		if _, ok := sidToIndex[sid]; !ok {
+			sidToIndex[sid] = len(sessionCatalogRows)
+			sessionCatalogRows = append(sessionCatalogRows, []any{sid, fmt.Sprintf("session %s", tail(sid, 6)), nonEmpty(event.Model, "unknown")})
+		}
+		ttfbRecordsV2 = append(ttfbRecordsV2, []any{event.Ts.UnixMilli() - recordBase, sidToIndex[sid], addModel(event.Model), event.TTFBMs})
 	}
-	failureRecords := make([][]any, 0, len(loaded.FailureEvents))
+	failureRecordsV2 := make([][]any, 0, len(loaded.FailureEvents))
 	for _, event := range loaded.FailureEvents {
-		failureRecords = append(failureRecords, []any{event.Ts.UnixMilli(), event.Sid, nonEmpty(event.Model, "unknown")})
+		sid := nonEmpty(event.Sid, "unknown")
+		if _, ok := sidToIndex[sid]; !ok {
+			sidToIndex[sid] = len(sessionCatalogRows)
+			sessionCatalogRows = append(sessionCatalogRows, []any{sid, fmt.Sprintf("session %s", tail(sid, 6)), nonEmpty(event.Model, "unknown")})
+		}
+		failureRecordsV2 = append(failureRecordsV2, []any{event.Ts.UnixMilli() - recordBase, sidToIndex[sid], addModel(event.Model)})
 	}
 
-	availableStart := now.UnixMilli()
-	if !cutoff.IsZero() {
+	availableStart := dataStart.UnixMilli()
+	if !hasData && !cutoff.IsZero() {
 		availableStart = cutoff.UnixMilli()
 	}
-	availableEnd := now.UnixMilli()
-	if len(records) > 0 {
-		availableStart = records[0][0].(int64)
-		availableEnd = records[len(records)-1][0].(int64)
+	availableEnd := dataEnd.UnixMilli()
+	viewNow := dataEnd
+	todayStart := localDayStart(viewNow)
+	historyStart := dataStart
+	viewRanges := []struct {
+		key   string
+		start time.Time
+		end   time.Time
+	}{
+		{"24h", viewNow.Add(-24 * time.Hour), viewNow},
+		{"today", todayStart, viewNow},
+		{"7", todayStart.Add(-6 * 24 * time.Hour), viewNow},
+		{"30", todayStart.Add(-29 * 24 * time.Hour), viewNow},
+		{"history", historyStart, viewNow},
+	}
+	views := make(map[string]any, len(viewRanges))
+	for _, viewRange := range viewRanges {
+		views[viewRange.key] = buildView(viewRange.key, formatRangeLabel(viewRange.start, viewRange.end, viewRange.key), viewRange.start, viewRange.end, loaded, sessionCatalog, loaded.Limits)
 	}
 
+	primary := mapValue(loaded.Limits, "primary")
+	secondary := mapValue(loaded.Limits, "secondary")
+	primaryUsed := safePercent(primary["used_percent"])
+	secondaryUsed := safePercent(secondary["used_percent"])
+	primaryReset, hasPrimaryReset := resetTime(primary["resets_at"])
+	secondaryReset, hasSecondaryReset := resetTime(secondary["resets_at"])
+
 	return map[string]any{
-		"generatedAt": now.Local().Format("2006-01-02 15:04:05"),
-		"windowDays":  days,
+		"schemaVersion": 2,
+		"generatedAt":   now.Local().Format("2006-01-02 15:04:05"),
+		"windowDays":    days,
+		"pricingRules":  pricingRulesPayload(),
 		"availableRange": map[string]any{
 			"start": availableStart,
 			"end":   availableEnd,
 		},
-		"sessionsCatalog": sessionCatalog,
-		"records":         records,
-		"ttfbRecords":     ttfbRecords,
-		"failureRecords":  failureRecords,
-		"summary": map[string]any{
-			"totalTokens":      totals.Total,
-			"totalTokensLabel": fmtInt(totals.Total),
-			"inputTokens":      totals.Input,
-			"inputLabel":       fmtInt(totals.Input),
-			"cachedTokens":     totals.Cached,
-			"cachedLabel":      fmtInt(totals.Cached),
-			"outputTokens":     totals.Output,
-			"outputLabel":      fmtInt(totals.Output),
-			"reasoningTokens":  totals.Reasoning,
-			"reasoningLabel":   fmtInt(totals.Reasoning),
-			"requests":         calls,
-			"requestsLabel":    fmt.Sprintf("%s", comma(calls)),
-			"failures":         failures,
-			"successRate":      successRate,
-			"successRateLabel": fmt.Sprintf("%.1f%%", successRate),
-			"cacheHit":         cacheHit,
-			"cacheHitLabel":    fmt.Sprintf("%.1f%%", cacheHit),
-			"peakTokens":       peakTotal,
-			"peakLabel":        fmtInt(peakTotal),
-			"peakTime":         displayTime(peakTs, hasPeak),
-			"peakTpmLabel":     fmt.Sprintf("%s TPM", fmtInt(peakTotal)),
+		"catalog": map[string]any{
+			"sessions": sessionCatalogRows,
+			"models":   modelCatalog,
 		},
+		"recordBase":       recordBase,
+		"recordsV2":        recordsV2,
+		"ttfbRecordsV2":    ttfbRecordsV2,
+		"failureRecordsV2": failureRecordsV2,
+		"views":            views,
 		"limits": map[string]any{
 			"limitId":                stringValue(loaded.Limits, "limit_id"),
 			"limitName":              stringValue(loaded.Limits, "limit_name"),
@@ -1192,24 +1823,78 @@ func buildPayload(root string, days int, trendMinutes int, cachePath string) map
 			"secondaryWindowMinutes": secondary["window_minutes"],
 			"rateLimitReachedType":   loaded.Limits["rate_limit_reached_type"],
 		},
-		"trend":    trend,
-		"sessions": sessionRows,
-		"models":   modelRows,
-		"risk": []map[string]any{
-			{"name": "5h", "value": percentValue(primaryUsed), "label": fmt.Sprintf("%.0f%% used", percentValue(primaryUsed)), "limit": "Codex primary"},
-			{"name": "Week", "value": percentValue(secondaryUsed), "label": fmt.Sprintf("%.0f%% used", percentValue(secondaryUsed)), "limit": "Codex secondary"},
-			{"name": "Cache", "value": cacheHit, "label": fmt.Sprintf("%.0f%% hit", cacheHit), "limit": "local logs"},
-			{"name": "Fail", "value": failureRate, "label": fmt.Sprintf("%d (%.1f%%)", failures, failureRate), "limit": "errors"},
-		},
-		"coverage": []map[string]any{
-			{"metric": "真实额度", "source": "token_count.rate_limits", "status": okMissing(loaded.Limits != nil)},
-			{"metric": "Token 消耗", "source": "token_count.last_token_usage", "status": okMissing(len(loaded.Events) > 0)},
-			{"metric": "会话排行", "source": "session_meta + token_count", "status": okMissing(len(loaded.Sessions) > 0)},
-			{"metric": "模型排行", "source": "turn_context.model", "status": okMissing(len(modelRows) > 0)},
-			{"metric": "峰值速率", "source": "selected range buckets", "status": okMissing(len(loaded.Events) > 0)},
-			{"metric": "缓存命中", "source": "cached_input_tokens / input_tokens", "status": okMissing(totals.Input > 0)},
-		},
 	}
+}
+
+func buildRawPayload(payload map[string]any) RawExportPayload {
+	return RawExportPayload{
+		SchemaVersion:    payload["schemaVersion"],
+		RawSchemaVersion: 1,
+		Catalog:          payload["catalog"],
+		RecordBase:       payload["recordBase"],
+		RecordsV2:        payload["recordsV2"],
+		TTFBRecordsV2:    payload["ttfbRecordsV2"],
+		FailureRecordsV2: payload["failureRecordsV2"],
+	}
+}
+
+func prepareMainPayloadForExport(payload map[string]any, outPath string, rawOutPath string) {
+	for _, key := range []string{
+		"recordBase",
+		"recordsV2",
+		"ttfbRecordsV2",
+		"failureRecordsV2",
+		"catalog",
+		"summary",
+		"trend",
+		"sessions",
+		"models",
+		"risk",
+		"coverage",
+	} {
+		delete(payload, key)
+	}
+	payload["rawDataPath"] = browserRawDataPath(outPath, rawOutPath)
+}
+
+func browserRawDataPath(outPath string, rawOutPath string) string {
+	return browserRelativePath(filepath.Dir(nonEmpty(outPath, ".")), rawOutPath)
+}
+
+func browserRelativePath(fromDir string, targetPath string) string {
+	if strings.TrimSpace(targetPath) == "" {
+		return "data.raw.js"
+	}
+	if strings.TrimSpace(fromDir) == "" {
+		fromDir = "."
+	}
+	rel, err := filepath.Rel(fromDir, targetPath)
+	if err != nil {
+		rel = targetPath
+	}
+	if rel == "." || rel == "" {
+		rel = filepath.Base(targetPath)
+	}
+	return filepath.ToSlash(rel)
+}
+
+func payloadLogSummary(payload map[string]any) map[string]any {
+	if views, ok := payload["views"].(map[string]any); ok {
+		if history, ok := views["history"].(map[string]any); ok {
+			if summary, ok := history["summary"].(map[string]any); ok {
+				return summary
+			}
+		}
+		if today, ok := views["today"].(map[string]any); ok {
+			if summary, ok := today["summary"].(map[string]any); ok {
+				return summary
+			}
+		}
+	}
+	if summary, ok := payload["summary"].(map[string]any); ok {
+		return summary
+	}
+	return map[string]any{"requestsLabel": "0", "totalTokensLabel": "0"}
 }
 
 func mapValue(values map[string]any, key string) map[string]any {
@@ -1254,11 +1939,31 @@ func optionalRemaining(value *float64) any {
 	return 100 - *value
 }
 
-func okMissing(ok bool) string {
-	if ok {
-		return "ok"
+func pctLabel(value float64) string {
+	return fmt.Sprintf("%.0f%%", clampPercentValue(value))
+}
+
+func quotaRiskRow(name string, used *float64, reset time.Time, hasReset bool, tone string) map[string]any {
+	if used == nil {
+		return map[string]any{
+			"name":         name,
+			"value":        nil,
+			"label":        "等待数据",
+			"note":         "本地日志暂无 rate_limits",
+			"tone":         tone,
+			"percentLabel": "--",
+		}
 	}
-	return "missing"
+	remaining := clampPercentValue(100 - *used)
+	usedLabel := pctLabel(*used)
+	return map[string]any{
+		"name":         name,
+		"value":        remaining,
+		"label":        fmt.Sprintf("%s 剩余", pctLabel(remaining)),
+		"note":         fmt.Sprintf("已用 %s · %s", usedLabel, displayTime(reset, hasReset)),
+		"tone":         tone,
+		"percentLabel": pctLabel(remaining),
+	}
 }
 
 func nonEmpty(value, fallback string) string {
@@ -1300,11 +2005,42 @@ func min(a, b int) int {
 	return b
 }
 
+func defaultRawOutPath(outPath string) string {
+	if outPath == "" {
+		return "data.raw.js"
+	}
+	ext := filepath.Ext(outPath)
+	if ext == "" {
+		return outPath + ".raw"
+	}
+	return strings.TrimSuffix(outPath, ext) + ".raw" + ext
+}
+
+func writeJSPayload(path string, globalName string, payload any) error {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	content := append([]byte("window."+globalName+" = "), body...)
+	if globalName == "CODEXSCOPE_DATA" {
+		content = append(content, []byte(";\nwindow.QUOTASCOPE_DATA = window.CODEXSCOPE_DATA;\n")...)
+	} else {
+		content = append(content, []byte(";\n")...)
+	}
+	if dir := filepath.Dir(path); dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
+	return os.WriteFile(path, content, 0o644)
+}
+
 func main() {
 	home, _ := os.UserHomeDir()
 	defaultRoot := filepath.Join(home, ".codex", "sessions")
 	root := flag.String("root", defaultRoot, "Codex sessions directory")
 	out := flag.String("out", "data.js", "output data.js path")
+	rawOut := flag.String("raw-out", "", "raw event sidecar path; defaults to data.raw.js next to the main output")
 	days := flag.Int("days", 0, "number of days to include; 0 means all history")
 	trendMinutes := flag.Int("trend-minutes", 300, "minutes in the summary trend")
 	cache := flag.String("cache", ".codexscope-cache.json", "local cache path")
@@ -1315,37 +2051,41 @@ func main() {
 	if *noCache {
 		cachePath = ""
 	}
+	rawOutPath := *rawOut
+	if rawOutPath == "" {
+		rawOutPath = defaultRawOutPath(*out)
+	}
 	stampPath := cacheStampPath(cachePath)
 	stampSignature := ""
+	var cacheFiles map[string]FileCache
 	if cachePath != "" {
 		now := time.Now().UTC()
 		cutoff := cutoffForDays(*days, now)
 		files := collectSessionFiles(*root, cutoff)
-		stampSignature = fileSignature(*root, *out, *days, *trendMinutes, files)
-		if outputIsStampedFresh(*out, files, stampPath, stampSignature) {
+		stampSignature = fileSignature(*root, *out, rawOutPath, *days, *trendMinutes, files)
+		if outputIsStampedFresh(*out, rawOutPath, files, stampPath, stampSignature) {
 			fmt.Printf("%s is up to date (%d files)\n", *out, len(files))
 			return
 		}
-		cacheFiles := loadCache(cachePath, *days)
-		if outputIsFresh(*out, files, cacheFiles) {
+		cacheFiles = loadCache(cachePath, *days)
+		if outputIsFresh(*out, rawOutPath, files, cacheFiles) {
 			fmt.Printf("%s is up to date (%d cached files)\n", *out, len(files))
 			writeRunStamp(stampPath, stampSignature)
 			return
 		}
 	}
-	payload := buildPayload(*root, *days, *trendMinutes, cachePath)
-	body, err := json.Marshal(payload)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to encode payload: %v\n", err)
+	payload := buildPayload(*root, *days, *trendMinutes, cachePath, cacheFiles)
+	summary := payloadLogSummary(payload)
+	rawPayload := buildRawPayload(payload)
+	prepareMainPayloadForExport(payload, *out, rawOutPath)
+	if err := writeJSPayload(rawOutPath, "CODEXSCOPE_RAW_DATA", rawPayload); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to write %s: %v\n", rawOutPath, err)
 		os.Exit(1)
 	}
-	content := append([]byte("window.CODEXSCOPE_DATA = "), body...)
-	content = append(content, []byte(";\nwindow.QUOTASCOPE_DATA = window.CODEXSCOPE_DATA;\n")...)
-	if err := os.WriteFile(*out, content, 0o644); err != nil {
+	if err := writeJSPayload(*out, "CODEXSCOPE_DATA", payload); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to write %s: %v\n", *out, err)
 		os.Exit(1)
 	}
 	writeRunStamp(stampPath, stampSignature)
-	summary := payload["summary"].(map[string]any)
 	fmt.Printf("wrote %s (%s requests, %s tokens)\n", *out, summary["requestsLabel"], summary["totalTokensLabel"])
 }

@@ -19,7 +19,8 @@
         },
     };
     const $ = (id) => document.getElementById(id);
-    const pct = (value) => `${Math.max(0, Math.min(100, Number(value) || 0)).toFixed(0)}%`;
+    const clampPercent = (value) => Math.max(0, Math.min(100, Number(value) || 0));
+    const pct = (value) => `${clampPercent(value).toFixed(0)}%`;
     const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
         "&": "&amp;",
         "<": "&lt;",
@@ -40,10 +41,123 @@
     const sortByTime = (rows) => Array.isArray(rows)
         ? [...rows].sort((a, b) => recordTime(a) - recordTime(b))
         : [];
-    const records = sortByTime(data.records);
-    const ttfbRecords = sortByTime(data.ttfbRecords);
-    const failureRecords = sortByTime(data.failureRecords);
-    const sessionsCatalog = data.sessionsCatalog || {};
+    const rawDataPath = data.rawDataPath || "data.raw.js";
+    const getRawData = () => window.CODEXSCOPE_RAW_DATA || data;
+    const getCatalog = (source = getRawData()) => source.catalog || data.catalog || {};
+    const getSessionCatalogRows = (source = getRawData()) => {
+        const catalog = getCatalog(source);
+        return Array.isArray(catalog.sessions) ? catalog.sessions : [];
+    };
+    const getModelCatalogRows = (source = getRawData()) => {
+        const catalog = getCatalog(source);
+        return Array.isArray(catalog.models) ? catalog.models : [];
+    };
+    let sessionsCatalogCache = null;
+    let sessionsCatalogRowsCache = null;
+    const getSessionsCatalog = () => {
+        if (data.sessionsCatalog)
+            return data.sessionsCatalog;
+        const rows = getSessionCatalogRows();
+        if (sessionsCatalogCache && sessionsCatalogRowsCache === rows)
+            return sessionsCatalogCache;
+        sessionsCatalogRowsCache = rows;
+        sessionsCatalogCache = rows.reduce((acc, row) => {
+            const sid = String(row?.[0] || "");
+            if (sid)
+                acc[sid] = { name: row?.[1] || `会话 ${sid.slice(-6)}`, model: row?.[2] || "unknown" };
+            return acc;
+        }, {});
+        return sessionsCatalogCache;
+    };
+    const rawDataset = (source = getRawData()) => {
+        const sessions = getSessionCatalogRows(source);
+        const models = getModelCatalogRows(source);
+        const recordBase = Number(source.recordBase) || 0;
+        return {
+            ts: (value) => recordBase ? recordBase + (Number(value) || 0) : Number(value) || 0,
+            sidAt: (index) => sessions[Number(index)]?.[0] || "unknown",
+            modelAt: (index) => models[Number(index)] || "unknown",
+        };
+    };
+    const sourceWithRows = (field) => Array.isArray(data[field]) ? data : getRawData();
+    const decodeUsageRowsV2 = (rows, source) => {
+        const dataset = rawDataset(source);
+        return rows.map((row) => [
+            dataset.ts(row?.[0]),
+            dataset.sidAt(row?.[1]),
+            dataset.modelAt(row?.[2]),
+            row?.[3] || 0,
+            row?.[4] || 0,
+            row?.[5] || 0,
+            row?.[6] || 0,
+            row?.[7] || 0,
+        ]);
+    };
+    const decodeTtfbRowsV2 = (rows, source) => {
+        const dataset = rawDataset(source);
+        return rows.map((row) => [
+            dataset.ts(row?.[0]),
+            dataset.sidAt(row?.[1]),
+            dataset.modelAt(row?.[2]),
+            row?.[3] || 0,
+        ]);
+    };
+    const decodeFailureRowsV2 = (rows, source) => {
+        const dataset = rawDataset(source);
+        return rows.map((row) => [
+            dataset.ts(row?.[0]),
+            dataset.sidAt(row?.[1]),
+            dataset.modelAt(row?.[2]),
+        ]);
+    };
+    const decodeRecords = () => {
+        const source = sourceWithRows("recordsV2");
+        return sortByTime(Array.isArray(source.recordsV2) ? decodeUsageRowsV2(source.recordsV2, source) : data.records);
+    };
+    const decodeTtfbRecords = () => {
+        const source = sourceWithRows("ttfbRecordsV2");
+        return sortByTime(Array.isArray(source.ttfbRecordsV2) ? decodeTtfbRowsV2(source.ttfbRecordsV2, source) : data.ttfbRecords);
+    };
+    const decodeFailureRecords = () => {
+        const source = sourceWithRows("failureRecordsV2");
+        return sortByTime(Array.isArray(source.failureRecordsV2) ? decodeFailureRowsV2(source.failureRecordsV2, source) : data.failureRecords);
+    };
+    let recordsCache = null;
+    let ttfbRecordsCache = null;
+    let failureRecordsCache = null;
+    let rawDataPromise = null;
+    const ensureRawData = () => {
+        if (data.records || data.recordsV2 || window.CODEXSCOPE_RAW_DATA)
+            return Promise.resolve();
+        if (!rawDataPromise) {
+            rawDataPromise = new Promise((resolve, reject) => {
+                const script = document.createElement("script");
+                script.src = rawDataPath;
+                script.async = true;
+                script.onload = () => {
+                    if (!window.CODEXSCOPE_RAW_DATA) {
+                        rawDataPromise = null;
+                        reject(new Error("raw data missing"));
+                        return;
+                    }
+                    recordsCache = null;
+                    ttfbRecordsCache = null;
+                    failureRecordsCache = null;
+                    resolve();
+                };
+                script.onerror = () => {
+                    rawDataPromise = null;
+                    reject(new Error(`failed to load ${rawDataPath}`));
+                };
+                document.head.appendChild(script);
+            });
+        }
+        return rawDataPromise;
+    };
+    const getRecords = () => recordsCache || (recordsCache = decodeRecords());
+    const getTtfbRecords = () => ttfbRecordsCache || (ttfbRecordsCache = decodeTtfbRecords());
+    const getFailureRecords = () => failureRecordsCache || (failureRecordsCache = decodeFailureRecords());
+    const precomputedViews = data.views || {};
     const limits = data.limits || {};
     let summary = data.summary || {};
     let trendRows = data.trend || [];
@@ -60,8 +174,8 @@
         status: "fallback",
     };
     const EXCHANGE_RATE_URL = "https://api.frankfurter.dev/v2/rate/USD/CNY?providers=ECB";
-    const latestDataTime = Math.max(Number((data.availableRange || {}).end) || 0, recordTime(records[records.length - 1])) || Date.now();
-    const earliestDataTime = Math.min(Number((data.availableRange || {}).start) || Infinity, recordTime(records[0]) || Infinity, recordTime(ttfbRecords[0]) || Infinity, recordTime(failureRecords[0]) || Infinity);
+    const latestDataTime = Number((data.availableRange || {}).end) || Date.now();
+    const earliestDataTime = Number((data.availableRange || {}).start) || latestDataTime;
     const firstDataTime = Number.isFinite(earliestDataTime) ? earliestDataTime : latestDataTime;
     const rangeNow = () => Math.min(Date.now(), latestDataTime);
     const lowerBound = (rows, ts) => {
@@ -89,6 +203,36 @@
         return lo;
     };
     const rowsInRange = (rows, range) => rows.slice(lowerBound(rows, range.start), upperBound(rows, range.end));
+    const successFailureRates = (requests, failures) => {
+        const requestCount = Math.max(0, Number(requests) || 0);
+        const failureCount = Math.max(0, Number(failures) || 0);
+        if (!requestCount) {
+            return failureCount ? { successRate: 0, failureRate: 100 } : { successRate: 100, failureRate: 0 };
+        }
+        const failureRate = clampPercent(failureCount / requestCount * 100);
+        return { successRate: 100 - failureRate, failureRate };
+    };
+    const quotaRiskRow = (name, remaining, used, reset, tone) => {
+        if (remaining === null || remaining === undefined) {
+            return {
+                name,
+                value: null,
+                label: "等待数据",
+                note: "本地日志暂无 rate_limits",
+                tone,
+                percentLabel: "--",
+            };
+        }
+        const value = clampPercent(remaining);
+        return {
+            name,
+            value,
+            label: `${pct(value)} 剩余`,
+            note: `已用 ${pct(used || 0)} · ${reset || "--"}`,
+            tone,
+            percentLabel: pct(value),
+        };
+    };
     const localDayStart = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
     const ymd = (date) => {
         const y = date.getFullYear();
@@ -203,25 +347,47 @@
             return `$${amount.toFixed(0)}`;
         return `$${amount.toFixed(2)}`;
     };
-    const MODEL_PRICING_USD_PER_M = [
-        // Built-in USD prices per 1M tokens. Keep this table in sync with the
-        // visible price help popover and OpenAI's public pricing page.
-        { test: /gpt-5\.5/i, input: 5.00, cached: 0.50, output: 30.00 },
-        { test: /gpt-5\.4[-_ ]?mini/i, input: 0.75, cached: 0.075, output: 4.50 },
-        { test: /gpt-5\.4/i, input: 2.50, cached: 0.25, output: 15.00 },
-        { test: /gpt-5\.3[-_ ]?codex[-_ ]?spark/i, input: 1.75, cached: 0.175, output: 14.00 },
-        { test: /gpt-5\.3[-_ ]?codex/i, input: 1.75, cached: 0.175, output: 14.00 },
-        { test: /gpt-5\.2[-_ ]?codex/i, input: 1.75, cached: 0.175, output: 14.00 },
-        { test: /gpt-5\.1[-_ ]?codex|gpt-5[-_ ]?codex|gpt-5(?!\.\d)/i, input: 1.25, cached: 0.125, output: 10.00 },
-    ];
+    const normalizePricingRules = (rules) => Array.isArray(rules)
+        ? rules.map((rule) => ({
+            label: String(rule?.label || rule?.patterns?.[0] || "unknown"),
+            patterns: (Array.isArray(rule?.patterns) ? rule.patterns : [rule?.pattern])
+                .map((pattern) => String(pattern || "").toLowerCase())
+                .filter(Boolean),
+            input: Number(rule?.input) || 0,
+            cached: Number(rule?.cached) || 0,
+            output: Number(rule?.output) || 0,
+        })).filter((rule) => rule.patterns.length && (rule.input || rule.cached || rule.output))
+        : [];
+    const pricingRules = normalizePricingRules(data.pricingRules || window.CODEXSCOPE_SAMPLE_DATA?.pricingRules);
     const pricingCache = new Map();
     const recordCostCache = new WeakMap();
     const pricingForModel = (model) => {
-        const key = String(model || "");
+        const key = String(model || "").toLowerCase();
         if (!pricingCache.has(key)) {
-            pricingCache.set(key, MODEL_PRICING_USD_PER_M.find((item) => item.test.test(key)) || null);
+            pricingCache.set(key, pricingRules.find((rule) => rule.patterns.some((pattern) => key.includes(pattern))) || null);
         }
         return pricingCache.get(key);
+    };
+    const priceRate = (value) => {
+        const amount = Number(value) || 0;
+        const decimals = amount > 0 && amount < 1 && !Number.isInteger(amount * 100) ? 3 : 2;
+        return `$${amount.toFixed(decimals)}`;
+    };
+    const renderPricingHelp = () => {
+        const body = $("priceTableBody");
+        if (!body)
+            return;
+        if (!pricingRules.length) {
+            body.innerHTML = `<tr><td colspan="4">等待价格表</td></tr>`;
+            return;
+        }
+        body.innerHTML = pricingRules.map((rule) => `
+      <tr>
+        <td>${esc(rule.label)}</td>
+        <td>${esc(priceRate(rule.input))}</td>
+        <td>${esc(priceRate(rule.cached))}</td>
+        <td>${esc(priceRate(rule.output))}</td>
+      </tr>`).join("");
     };
     const emptyCost = () => ({ input: 0, cached: 0, output: 0, reasoning: 0, total: 0, pricedTokens: 0, unpricedTokens: 0 });
     const addCost = (target, source) => {
@@ -238,8 +404,6 @@
         const cachedCost = recordCostCache.get(record);
         if (cachedCost)
             return cachedCost;
-        // Record layout is generated by generate_codex_data.go:
-        // [ts, sid, model, input, cached_input, output, reasoning_output, total].
         const model = record[2] || "unknown";
         const pricing = pricingForModel(model);
         const inputTokens = Math.max(0, Number(record[3]) || 0);
@@ -248,8 +412,6 @@
         const reasoningRaw = Math.max(0, Number(record[6]) || 0);
         const cachedTokens = inputTokens ? Math.min(inputTokens, cachedRaw) : cachedRaw;
         const billableInput = Math.max(0, inputTokens - cachedTokens);
-        // Reasoning tokens are part of output-side billing in this estimate, so
-        // split visible output and reasoning only for display composition.
         const billedReasoning = Math.min(outputTokens, reasoningRaw);
         const visibleOutput = Math.max(0, outputTokens - billedReasoning);
         const pricedTokens = billableInput + cachedTokens + visibleOutput + billedReasoning;
@@ -297,8 +459,6 @@
     };
     const emptyUsage = () => ({ input: 0, cached: 0, output: 0, reasoning: 0, total: 0, requests: 0, cost: 0 });
     const buildBuckets = (filtered, range, step) => {
-        // Use market-style fixed time grains: dense line anchors for trends,
-        // coarser buckets for bars. Bucket boundaries align to round clock times.
         const duration = Math.max(1, range.end - range.start);
         const safeStep = Math.max(MINUTE, step || chooseNiceStep(duration, 180));
         const start = Math.floor(range.start / safeStep) * safeStep;
@@ -328,7 +488,6 @@
         }));
     };
     const computePeakRate = (filtered, range) => {
-        // Sliding one-minute sum over the selected range, used for the TPM card.
         let left = 0;
         let sum = 0;
         let peakTotal = 0;
@@ -353,8 +512,9 @@
         };
     };
     const computeStats = (range) => {
-        // All date-filtered views are derived from compact local records here.
-        // No network request is needed to switch ranges or ranking modes.
+        const records = getRecords();
+        const failureRecords = getFailureRecords();
+        const ttfbRecords = getTtfbRecords();
         const filtered = rowsInRange(records, range);
         const failures = rowsInRange(failureRecords, range);
         const ttfb = rowsInRange(ttfbRecords, range);
@@ -373,7 +533,7 @@
             totals.requests += 1;
             const sid = record[1] || "unknown";
             const model = record[2] || "unknown";
-            const catalog = sessionsCatalog[sid] || {};
+            const catalog = getSessionsCatalog()[sid] || {};
             const session = bySession.get(sid) || { name: catalog.name || `会话 ${sid.slice(-6)}`, model, tokens: 0, requests: 0, status: "ok" };
             session.tokens += record[7] || 0;
             session.requests += 1;
@@ -396,9 +556,8 @@
         const distributionBuckets = buildBuckets(filtered, range, chooseNiceStep(duration, 32));
         const peak = computePeakRate(filtered, range);
         const cacheHit = totals.input ? totals.cached / totals.input * 100 : 0;
-        const failureRate = totals.requests ? failures.length / totals.requests * 100 : 0;
-        const successRate = totals.requests ? Math.max(0, (totals.requests - failures.length) / totals.requests * 100) : 100;
-        const sessions = Array.from(bySession.values());
+        const { successRate, failureRate } = successFailureRates(totals.requests, failures.length);
+        const sessions = Array.from(bySession.values()).sort((a, b) => b.tokens - a.tokens);
         const maxSessionTokens = Math.max(1, ...sessions.map((row) => row.tokens));
         const maxSessionRequests = Math.max(1, ...sessions.map((row) => row.requests));
         const models = Array.from(byModel.values()).sort((a, b) => b.tokens - a.tokens).slice(0, 12);
@@ -463,13 +622,78 @@
                 percent: Math.round((row.cost || 0) / maxModelCost * 100),
             })),
             risk: [
-                { name: "5h 窗口", value: limits.primaryRemaining ?? 0, label: `${pct(limits.primaryRemaining ?? 0)} 剩余`, note: `已用 ${pct(limits.primaryUsed || 0)} · ${limits.primaryReset || "--"}`, tone: "blue" },
-                { name: "周限额", value: limits.secondaryRemaining ?? 0, label: `${pct(limits.secondaryRemaining ?? 0)} 剩余`, note: `已用 ${pct(limits.secondaryUsed || 0)} · ${limits.secondaryReset || "--"}`, tone: "teal" },
+                quotaRiskRow("5h 窗口", limits.primaryRemaining ?? null, limits.primaryUsed, limits.primaryReset, "blue"),
+                quotaRiskRow("周限额", limits.secondaryRemaining ?? null, limits.secondaryUsed, limits.secondaryReset, "teal"),
                 { name: "缓存", value: cacheHit, label: `命中 ${cacheHit.toFixed(0)}%`, note: "输入 token", tone: "teal" },
                 { name: "失败", value: failureRate, label: `${failureRate.toFixed(1)}%`, note: `${failures.length} 次失败`, tone: "amber" },
             ],
         };
     };
+    const normalizeTrendRows = (rows, stepLabel = "", stepMinutes = 0) => (rows || []).map((row) => Array.isArray(row)
+        ? {
+            label: row[0] || "",
+            total: row[1] || 0,
+            cached: row[2] || 0,
+            output: row[3] || 0,
+            input: row[4] || 0,
+            reasoning: row[5] || 0,
+            requests: row[6] || 0,
+            cost: row[7] || 0,
+            stepLabel,
+            stepMinutes,
+        }
+        : row);
+    const normalizeDistributionRows = (rows) => (rows || []).map((row) => Array.isArray(row)
+        ? {
+            label: row[0] || "",
+            total: row[1] || 0,
+            requests: row[2] || 0,
+            cost: row[3] || 0,
+        }
+        : row);
+    const emptyStatsForRange = (range, message = "") => ({
+        label: range.label,
+        summary: {
+            totalTokensLabel: "--",
+            inputLabel: "--",
+            cachedLabel: "--",
+            outputLabel: "--",
+            reasoningLabel: "--",
+            requestsLabel: "0",
+            failures: 0,
+            successRateLabel: "--",
+            cacheHitLabel: "--",
+            peakLabel: "--",
+            peakTime: "--",
+            peakTpmLabel: "--",
+            loadError: message,
+        },
+        cost: { ...emptyCost(), average: 0, rangeTokensLabel: "--", parts: [] },
+        trend: [],
+        distribution: [],
+        sessions: [],
+        models: [],
+        costModels: [],
+        risk: [],
+    });
+    const statsForRange = (range) => {
+        const view = range.preset !== "custom" ? precomputedViews[range.preset] : null;
+        if (view) {
+            return {
+                label: range.label || view.label,
+                summary: view.summary || {},
+                cost: view.cost || { ...emptyCost(), parts: [] },
+                trend: normalizeTrendRows(view.trend, view.trendStepLabel, view.trendStepMinutes),
+                distribution: normalizeDistributionRows(view.distribution),
+                sessions: view.sessions || [],
+                models: view.models || [],
+                costModels: view.costModels || [],
+                risk: view.risk || [],
+            };
+        }
+        return ensureRawData().then(() => computeStats(range));
+    };
+    let rangeRequestSeq = 0;
     const applyStats = (stats) => {
         summary = stats.summary;
         summary.rangeLabel = stats.label;
@@ -617,8 +841,6 @@
         reasoning: { label: "推理", color: "#8b5cf6", width: 2.2 },
     };
     const trendRowsForMode = (rows) => {
-        // Interval mode uses each bucket as-is. Cumulative mode turns the same
-        // buckets into running totals so both modes share one data source.
         if (uiState.trendMode === "interval") {
             return rows.map((row) => ({ ...row }));
         }
@@ -659,14 +881,16 @@
         });
     };
     const renderChart = () => {
-        // Draw the main SVG trend from active series, selected trend mode, and
-        // selected y-axis scale. The tooltip marks the latest cumulative point
-        // or the highest interval bucket.
         const svg = $("trendChart");
         const baseRows = trendRows || [];
-        if (!svg || baseRows.length < 2)
+        if (!svg)
             return;
         renderTrendControls();
+        if (baseRows.length < 2) {
+            setText("chartMeta", summary.loadError || `累计 ${summary.totalTokensLabel || "--"}`);
+            svg.innerHTML = "";
+            return;
+        }
         const rows = trendRowsForMode(baseRows);
         const activeKeys = Object.keys(seriesConfig).filter((key) => uiState.trendSeries[key]);
         if (!activeKeys.length)
@@ -735,8 +959,6 @@
     `;
     };
     const renderSessions = () => {
-        // Session ranking is intentionally re-sorted at render time so the same
-        // computed rows can switch between Token and request-count rankings.
         const allRows = sessionRows || [];
         const tokenMode = uiState.sessionMode !== "requests";
         document.querySelectorAll(".session-mode").forEach((button) => {
@@ -808,8 +1030,8 @@
         $("riskList").innerHTML = rows.map((row, index) => `
       <div class="risk-row">
         <span class="risk-icon">${labels[index] || "•"}</span><strong>${esc(row.name)}</strong>
-        <span class="track"><span class="fill ${row.tone === "teal" ? "teal" : row.tone === "amber" ? "amber" : ""}" style="display:block;width:${Math.max(2, Math.min(100, row.value || 0))}%"></span></span>
-        <span class="value">${esc(row.label)}${row.note ? `<small>${esc(row.note)}</small>` : ""}</span><span class="percent">${pct(row.value)}</span>
+        <span class="track"><span class="fill ${row.tone === "teal" ? "teal" : row.tone === "amber" ? "amber" : ""}" style="display:block;width:${row.value === null || row.value === undefined ? 0 : Math.max(2, Math.min(100, row.value || 0))}%"></span></span>
+        <span class="value">${esc(row.label)}${row.note ? `<small>${esc(row.note)}</small>` : ""}</span><span class="percent">${esc(row.percentLabel ?? pct(row.value))}</span>
       </div>`).join("") + `
       <div class="warning">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -914,8 +1136,6 @@
       <div class="dist-x-axis" aria-label="时间段">${xLabels}</div>`;
     };
     const renderCost = () => {
-        // Cost is an estimate from local token records and the built-in pricing
-        // table. The currency toggle only changes display conversion.
         const content = $("costContent");
         if (!content)
             return;
@@ -1013,8 +1233,6 @@
         renderCost();
     };
     const refreshExchangeRate = async () => {
-        // Optional display-only FX lookup. Failure keeps the bundled fallback
-        // rate and never blocks the dashboard.
         try {
             const response = await fetch(EXCHANGE_RATE_URL, { cache: "no-store" });
             if (!response.ok)
@@ -1034,8 +1252,6 @@
         }
     };
     const applyRange = (preset) => {
-        // Central range switch: recompute filtered stats, reset expanded lists,
-        // and re-render every dependent panel from local data.
         const custom = preset === "custom";
         $("customRange").hidden = !custom;
         document.querySelectorAll(".period-btn").forEach((button) => {
@@ -1043,7 +1259,30 @@
         });
         uiState.sessionsExpanded = false;
         uiState.modelsExpanded = false;
-        applyStats(computeStats(rangeForPreset(preset)));
+        const range = rangeForPreset(preset);
+        const requestSeq = ++rangeRequestSeq;
+        const result = statsForRange(range);
+        if (result && typeof result.then === "function") {
+            result.then((stats) => {
+                if (requestSeq !== rangeRequestSeq)
+                    return;
+                applyStats(stats);
+                renderAll();
+            }).catch(() => {
+                if (requestSeq !== rangeRequestSeq)
+                    return;
+                applyStats(emptyStatsForRange(range, "无法加载原始记录"));
+                renderAll();
+                const chart = $("distributionChart");
+                if (chart)
+                    chart.innerHTML = `<div class="dist-empty">无法加载原始记录</div>`;
+                setText("rangeSummary", `${range.label || "自定义范围"} · 无法加载原始记录`);
+            });
+            return;
+        }
+        if (requestSeq !== rangeRequestSeq)
+            return;
+        applyStats(result);
         renderAll();
     };
     const availableStart = new Date(firstDataTime || Date.now() - 29 * DAY);
@@ -1127,6 +1366,7 @@
                 closeCostHelp();
         });
     }
+    renderPricingHelp();
     applyRange("today");
     $("toggleSessions")?.addEventListener("click", () => {
         uiState.sessionsExpanded = !uiState.sessionsExpanded;

@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.1.9 - 2026-05-09
+
+- Switched generated exports to compact `recordsV2` rows and delta timestamps, with catalogs kept in the raw sidecar to reduce first-load `data.js` size.
+- Added precomputed dashboard views for common ranges so preset filters avoid rescanning raw records in the browser.
+- Exported model pricing rules from the generator so precomputed views and custom date ranges share one cost-estimation source.
+- Compact precomputed chart buckets to shrink first-load dashboard views without changing the UI.
+- Split raw event rows into `data.raw.js`, loaded only when custom date ranges need raw records.
+- Added a raw sidecar schema marker so hot-start freshness checks do not scan the full raw export.
+- Fixed custom `--raw-out` paths by writing a browser-relative sidecar path into `data.js`.
+- Refactored preset view generation to aggregate summaries, charts, peak rate, sessions, and model stats in a single token-event pass.
+- Date preset views now slice sorted runtime events by time range before aggregating, avoiding full-history scans for short ranges.
+- Reused the already-loaded parsed cache during regeneration so runs with changed logs do not parse the large cache JSON twice.
+- Bumped cache output stamping to regenerate once after the data-shape upgrade while still reusing readable parsed log cache.
+- Slimmed release packages by removing bundled README docs from platform zips and stripping Go build ids.
+
 ## v0.1.8 - 2026-05-09
 
 - Switched trend chart anchors to market-style adaptive time grains.

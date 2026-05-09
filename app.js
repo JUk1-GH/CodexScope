@@ -445,9 +445,29 @@
         setText("chartMeta", `累计 ${summary.totalTokensLabel || "--"}`);
     };
     const isSampleData = data.sample === true;
+    const quotaSourceLabel = (withPrefix = true) => {
+        const limitId = String(limits.limitId || "").toLowerCase();
+        const limitName = String(limits.limitName || "");
+        const plan = String(limits.planType || "").toUpperCase();
+        let label = "额度状态";
+        if (isSampleData) {
+            label = "示例数据";
+        }
+        else if (limitId === "codex") {
+            label = plan && plan !== "UNKNOWN" ? `Codex ${plan} 全局额度` : "Codex 全局额度";
+        }
+        else if (limitName) {
+            label = `${limitName} 限额`;
+        }
+        else if (limitId) {
+            label = `${limitId} 限额`;
+        }
+        return withPrefix ? `来源：${label}` : label;
+    };
     setText("sourcePrimary", isSampleData ? "示例数据" : "Codex 桌面端");
     setText("sourceSecondary", isSampleData ? "直接预览" : "本地日志");
-    setText("sourceTertiary", isSampleData ? "运行脚本看真实数据" : "额度状态");
+    setText("sourceTertiary", isSampleData ? "运行脚本看真实数据" : quotaSourceLabel(false));
+    setText("quotaSource", quotaSourceLabel(true));
     setText("syncText", isSampleData ? "Demo 预览" : `${data.generatedAt?.slice(11, 16) || "--"} 已同步`);
     const primaryRemain = limits.primaryRemaining ?? null;
     const secondaryRemain = limits.secondaryRemaining ?? null;

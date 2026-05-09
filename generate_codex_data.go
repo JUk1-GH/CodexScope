@@ -18,8 +18,8 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-const cacheVersion = 2
-const minReadableCacheVersion = 1
+const cacheVersion = 3
+const minReadableCacheVersion = 3
 
 // Usage mirrors the token fields emitted by Codex token_count events.
 // Total is kept from the log when present; it is not recomputed from the
@@ -159,6 +159,45 @@ func isoTime(value time.Time, ok bool) string {
 		return ""
 	}
 	return value.UTC().Format(time.RFC3339Nano)
+}
+
+func rateLimitPriority(limits map[string]any) int {
+	if limits == nil {
+		return -1
+	}
+	limitID := strings.ToLower(strings.TrimSpace(stringValue(limits, "limit_id")))
+	limitName := strings.TrimSpace(stringValue(limits, "limit_name"))
+	switch {
+	case limitID == "codex":
+		return 100
+	case limitID != "" && limitName == "":
+		return 80
+	case limitID != "" || limitName != "":
+		return 50
+	default:
+		return 10
+	}
+}
+
+func preferRateLimits(candidate map[string]any, candidateTs time.Time, hasCandidateTs bool, current map[string]any, currentTs time.Time, hasCurrentTs bool) bool {
+	if candidate == nil {
+		return false
+	}
+	if current == nil {
+		return true
+	}
+	candidatePriority := rateLimitPriority(candidate)
+	currentPriority := rateLimitPriority(current)
+	if candidatePriority != currentPriority {
+		return candidatePriority > currentPriority
+	}
+	if !hasCurrentTs {
+		return true
+	}
+	if !hasCandidateTs {
+		return false
+	}
+	return !candidateTs.Before(currentTs)
 }
 
 func fmtInt(value int64) string {
@@ -534,11 +573,12 @@ func parseSessionFileFrom(path string, cutoff time.Time, parsed ParsedFile, offs
 				ts, hasTs := parseTime(obj.Get("timestamp").String())
 				limitsResult := obj.Get("payload.rate_limits")
 				if limitsResult.Exists() && limitsResult.IsObject() {
-					// Keep the newest rate-limit object found in local logs. This
-					// is useful quota telemetry, but it is not a live billing lookup.
-					if !hasLatestLimitsTs || (hasTs && !ts.Before(latestLimitsTs)) {
-						var limits map[string]any
-						if json.Unmarshal([]byte(limitsResult.Raw), &limits) == nil {
+					var limits map[string]any
+					if json.Unmarshal([]byte(limitsResult.Raw), &limits) == nil {
+						// Codex can emit both global quota and model-specific quota
+						// records. Prefer the global codex object; for the same
+						// quota class, keep the newest record.
+						if preferRateLimits(limits, ts, hasTs, parsed.LatestLimits, latestLimitsTs, hasLatestLimitsTs) {
 							parsed.LatestLimits = limits
 							if hasTs {
 								latestLimitsTs = ts
@@ -684,7 +724,8 @@ func mergeSessionFile(parsed ParsedFile, cutoff time.Time, loaded *LoadedData, l
 	}
 
 	if parsed.LatestLimits != nil {
-		if ts, ok := parseTime(parsed.LatestLimitsTs); latestLimitsTs.IsZero() || (ok && !ts.Before(*latestLimitsTs)) {
+		ts, ok := parseTime(parsed.LatestLimitsTs)
+		if preferRateLimits(parsed.LatestLimits, ts, ok, loaded.Limits, *latestLimitsTs, !latestLimitsTs.IsZero()) {
 			loaded.Limits = parsed.LatestLimits
 			if ok {
 				*latestLimitsTs = ts
@@ -1098,6 +1139,8 @@ func buildPayload(root string, days int, trendMinutes int, cachePath string) map
 			"peakTpmLabel":     fmt.Sprintf("%s TPM", fmtInt(peakTotal)),
 		},
 		"limits": map[string]any{
+			"limitId":                stringValue(loaded.Limits, "limit_id"),
+			"limitName":              stringValue(loaded.Limits, "limit_name"),
 			"planType":               nonEmpty(stringValue(loaded.Limits, "plan_type"), "unknown"),
 			"primaryUsed":            optionalFloat(primaryUsed),
 			"primaryRemaining":       optionalRemaining(primaryUsed),

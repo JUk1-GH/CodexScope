@@ -183,6 +183,10 @@ function isVisibleInViewport(rect, height) {
       const totalLegend = document.querySelector('.legend-item[data-series="total"]');
       const reasoningLegend = document.querySelector('.legend-item[data-series="reasoning"]');
       const defaultLinearScale = document.querySelector('.trend-scale[data-trend-scale="linear"]')?.classList.contains("active");
+      const cumulativeButton = document.querySelector('.trend-mode[data-trend-mode="cumulative"]');
+      const intervalButton = document.querySelector('.trend-mode[data-trend-mode="interval"]');
+      const defaultCumulativeMode = !cumulativeButton
+        || (cumulativeButton.classList.contains("active") && (document.querySelector("#chartMeta")?.textContent?.trim() || "").includes("累计"));
       const logScaleButton = document.querySelector('.trend-scale[data-trend-scale="log"]');
       logScaleButton?.click();
       ensureActive(totalLegend);
@@ -196,8 +200,9 @@ function isVisibleInViewport(rect, height) {
       const activeTrendLines = count('#trendChart path[data-series]');
       const logScaleActive = !logScaleButton || logScaleButton.classList.contains("active");
       const trendMultiSeries = totalActive && inputActive && reasoningActive && activeTrendLines >= 3 && inputSpread > 8 && reasoningSpread > 8 && logScaleActive;
-      const trendModeControlsRemoved = document.querySelectorAll(".trend-mode").length === 0
-        && (document.querySelector("#chartMeta")?.textContent?.trim() || "").includes("累计");
+      intervalButton?.click();
+      const intervalModeSwitches = !intervalButton
+        || (intervalButton.classList.contains("active") && (document.querySelector("#chartMeta")?.textContent?.trim() || "").includes("分时峰值"));
       const customButton = document.querySelector('.period-btn[data-range="custom"]');
       customButton?.click();
       const customRange = document.querySelector("#customRange");
@@ -221,7 +226,8 @@ function isVisibleInViewport(rect, height) {
         currencyUsdSwitches: usdSwitches,
         defaultLinearScale,
         trendMultiSeries,
-        trendModeControlsRemoved,
+        defaultCumulativeMode,
+        intervalModeSwitches,
         customRangeReveals: !customButton || (customButton.classList.contains("active") && customRange && !customRange.hidden),
         customRangeComputes: !customButton || rangeAfterCustom.includes("至"),
       };
@@ -255,7 +261,8 @@ function isVisibleInViewport(rect, height) {
     if (!interactions.currencyUsdSwitches) issues.push("cost currency toggle does not switch back to USD");
     if (!interactions.defaultLinearScale) issues.push("trend scale does not default to linear");
     if (!interactions.trendMultiSeries) issues.push("trend chart does not show multiple visible curves together");
-    if (!interactions.trendModeControlsRemoved) issues.push("trend chart should be cumulative-only");
+    if (!interactions.defaultCumulativeMode) issues.push("trend mode does not default to cumulative");
+    if (!interactions.intervalModeSwitches) issues.push("trend mode does not switch to interval");
     if (!interactions.customRangeReveals) issues.push("custom date range does not reveal inputs");
     if (!interactions.customRangeComputes) issues.push("custom date range does not compute a range label");
 

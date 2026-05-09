@@ -454,7 +454,8 @@
       background: #fff;
     }
 
-    .trend-scale {
+    .trend-scale,
+    .trend-mode {
       appearance: none;
       flex: 0 0 55px;
       width: 55px;
@@ -467,11 +468,13 @@
       cursor: pointer;
     }
 
-    .trend-scale:first-child {
+    .trend-scale:first-child,
+    .trend-mode:first-child {
       border-left: 0;
     }
 
-    .trend-scale.active {
+    .trend-scale.active,
+    .trend-mode.active {
       background: var(--blue);
       color: #fff;
     }
@@ -3507,6 +3510,10 @@
               <div id="chartMeta" class="forecast">累计 --</div>
             </div>
             <div class="chart-actions">
+              <div class="trend-toggle" role="group" aria-label="趋势统计方式">
+                <button class="trend-mode active" type="button" data-trend-mode="cumulative">累计</button>
+                <button class="trend-mode" type="button" data-trend-mode="interval">分时</button>
+              </div>
               <div class="trend-toggle" role="group" aria-label="趋势尺度">
                 <button class="trend-scale active" type="button" data-trend-scale="linear">绝对</button>
                 <button class="trend-scale" type="button" data-trend-scale="log">对数</button>
@@ -3699,6 +3706,7 @@
         sessionMode: "tokens",
         distributionMode: "calls",
         currency: "USD",
+        trendMode: "cumulative",
         trendScale: "linear",
         trendSeries: {
           total: true,
@@ -4199,6 +4207,9 @@
       };
 
       const trendRowsForMode = (rows) => {
+        if (uiState.trendMode === "interval") {
+          return rows.map((row) => ({ ...row }));
+        }
         const running = { total: 0, cached: 0, output: 0, input: 0, reasoning: 0 };
         return rows.map((row) => {
           Object.keys(running).forEach((key) => {
@@ -4209,6 +4220,9 @@
       };
 
       const renderTrendControls = () => {
+        document.querySelectorAll(".trend-mode").forEach((button) => {
+          button.classList.toggle("active", button.dataset.trendMode === uiState.trendMode);
+        });
         document.querySelectorAll(".trend-scale").forEach((button) => {
           button.classList.toggle("active", button.dataset.trendScale === uiState.trendScale);
         });
@@ -4257,7 +4271,9 @@
         };
         const series = (key) => rows.map((row, index) => [x(index), y(row[key] || 0)]);
         const primary = series(primaryKey);
-        const peakIndex = rows.length - 1;
+        const peakIndex = uiState.trendMode === "interval"
+          ? rows.reduce((best, row, index) => (row[primaryKey] || 0) > (rows[best][primaryKey] || 0) ? index : best, 0)
+          : rows.length - 1;
         const peakPoint = primary[peakIndex];
         const area = (points) => `${smoothPath(points)} L${points[points.length - 1][0]} ${bottom} L${points[0][0]} ${bottom} Z`;
         const yTicks = logScale
@@ -4272,7 +4288,8 @@
         ).join("");
         const gridLines = yTicks.filter((tick) => tick > 0).map((tick) => `<line x1="${left}" y1="${y(tick)}" x2="${right}" y2="${y(tick)}" class="grid-line"/>`).join("");
         const yLabels = compactChart ? "" : yTicks.map((tick) => `<text x="${tick === 0 ? 22 : 2}" y="${Math.min(198, y(tick) + 4)}" class="chart-label">${compact(tick)}</text>`).join("");
-        const metaLabel = `累计 ${primaryConfig.label} ${fmt(rows[peakIndex][primaryKey] || 0)}`;
+        const metaPrefix = uiState.trendMode === "interval" ? "分时峰值" : "累计";
+        const metaLabel = `${metaPrefix} ${primaryConfig.label} ${fmt(rows[peakIndex][primaryKey] || 0)}`;
         setText("chartMeta", metaLabel);
         const tooltip = compactChart ? "" : `
           <rect x="${Math.min(right - 150, Math.max(left + 8, peakPoint[0] - 16))}" y="${Math.max(0, peakPoint[1] - 34)}" width="146" height="34" rx="5" class="tooltip-box"/>
@@ -4589,6 +4606,12 @@
       document.querySelectorAll(".trend-scale").forEach((button) => {
         button.addEventListener("click", () => {
           uiState.trendScale = button.dataset.trendScale || "linear";
+          renderChart();
+        });
+      });
+      document.querySelectorAll(".trend-mode").forEach((button) => {
+        button.addEventListener("click", () => {
+          uiState.trendMode = button.dataset.trendMode === "interval" ? "interval" : "cumulative";
           renderChart();
         });
       });
